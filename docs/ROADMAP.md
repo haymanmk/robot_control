@@ -29,6 +29,7 @@ demonstrates.
 |---|---|---|
 | **00 — drive comms loss** ⛔ | When command frames stop arriving, does a RobStride drive hold its last setpoint or disable? | Fail-safe vs fail-operational, why a brakeless arm has no unpowered safe state, dependency ranking of stop paths ([ADR-0005](adr/0005-safe-state-and-stop-architecture.md)) |
 | **01 — loop timing** ✅ | How wrong is `time.sleep(dt - elapsed)`, in microseconds? | Monotonic vs wall clocks, absolute vs relative deadlines, phase-locked loops, drift vs jitter, percentiles over averages, `SCHED_FIFO`, `mlockall`, why the GIL is not your main problem here |
+| 00b — the firmware floor ⛔ | Is the latency floor on this laptop set by the kernel or by SMM firmware? | `hwlatdetect`, System Management Interrupts, why a dual-kernel cannot fix a firmware stall ([ADR-0007](adr/0007-rt-platform-on-a-cuda-laptop.md)) |
 | 02 — the CAN bus | What is actually on the wire at 500 Hz? | CAN framing, arbitration, bit stuffing, bus load, SocketCAN, `candump`/`cangen`, why bus utilisation — not the kernel — sets worst-case latency |
 | 03 — round-trip latency | Command frame out → feedback frame back, distribution? | Dead time in a control loop, its effect on achievable gains, joint-to-joint skew without a distributed clock |
 
@@ -64,7 +65,7 @@ from *measured* numbers.
 
 | Lab | Question | Fundamentals |
 |---|---|---|
-| 14 — the RT/non-RT split | How do setpoints cross from planning to the 500 Hz loop? | Lock-free SPSC ring buffers, memory ordering, why allocation and logging are banned in the cyclic path, ADR-0001's bridge spec made real |
+| 14 — the RT/non-RT split *(moved early)* | How do setpoints cross from a client process into the 500 Hz loop, and survive that client dying? | Lock-free SPSC ring buffers, memory ordering and why it fails unreproducibly, POSIX shared memory, heartbeats, `ThreadSanitizer`. Built in Phase 1, not Phase 4 — [ADR-0006](adr/0006-process-topology-and-rt-client-transport.md) makes it the watchdog's precondition. |
 | 15 — PREEMPT_RT, *if needed* | Does the budget hold under load on the stock kernel — and if not, does PREEMPT_RT close the gap? | `cyclictest`, `isolcpus`/`nohz_full`/`rcu_nocbs`, IRQ affinity, priority inversion, ftrace. Note the order: measure the stock kernel **first**. A 2 ms outer loop with `SCHED_FIFO` and CPU isolation may already pass, and ADR-0001's own principle says do not adopt a kernel you have not proven you need. |
 | 18 — repeatability, ISO 9283 | Is the ±0.1 mm claim true? | Pose repeatability vs accuracy, why the encoders cannot validate the encoders, dial-indicator procedure, sample size and confidence |
 | 16 — ROS2 tier | MoveIt2, state publishing, Foxglove | `ros2_control` architecture, DDS, lifecycle nodes, and where the real-time boundary must sit |

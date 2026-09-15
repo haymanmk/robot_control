@@ -46,9 +46,18 @@ moment the core needs ROS to build, ROS is in the control path in spirit even if
 not in fact.
 
 **pybind11** over nanobind for the bindings: the binding layer is not in the hot
-path, so maturity and ecosystem beat marginal speed.
+path, so maturity and ecosystem beat marginal speed. (What gets bound changed in
+[ADR-0006](0006-process-topology-and-rt-client-transport.md): the bridge client
+and `core/model`, not the RT core.)
 
 ### 2. The Python boundary — the rule that must not bend
+
+> **⚠️ Superseded by [ADR-0006](0006-process-topology-and-rt-client-transport.md).**
+> The rule below stands; the *mechanism* does not. In-process bindings would kill
+> the RT core whenever the interpreter dies, which is precisely when
+> [ADR-0005](0005-safe-state-and-stop-architecture.md)'s watchdog must still be
+> running. Live control moves to a separate process over a shared-memory bridge;
+> in-process bindings are retained only for offline analysis.
 
 Python may **command and observe**. Python may **not** be in the cyclic path.
 
