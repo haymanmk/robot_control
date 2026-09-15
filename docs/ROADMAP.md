@@ -65,7 +65,7 @@ from *measured* numbers.
 
 | Lab | Question | Fundamentals |
 |---|---|---|
-| 14 — the RT/non-RT split *(moved early)* | How do setpoints cross from a client process into the 500 Hz loop, and survive that client dying? | Lock-free SPSC ring buffers, memory ordering and why it fails unreproducibly, POSIX shared memory, heartbeats, `ThreadSanitizer`. Built in Phase 1, not Phase 4 — [ADR-0006](adr/0006-process-topology-and-rt-client-transport.md) makes it the watchdog's precondition. |
+| 14 — the RT/non-RT split ✅ | How do setpoints cross from a client process into the 500 Hz loop, and survive that client dying? | Lock-free SPSC ring buffers, memory ordering and why it fails unreproducibly, POSIX shared memory, heartbeats, `ThreadSanitizer`. Built in Phase 1, not Phase 4 — [ADR-0006](adr/0006-process-topology-and-rt-client-transport.md) makes it the watchdog's precondition. |
 | 15 — PREEMPT_RT, *if needed* | Does the budget hold under load on the stock kernel — and if not, does PREEMPT_RT close the gap? | `cyclictest`, `isolcpus`/`nohz_full`/`rcu_nocbs`, IRQ affinity, priority inversion, ftrace. Note the order: measure the stock kernel **first**. A 2 ms outer loop with `SCHED_FIFO` and CPU isolation may already pass, and ADR-0001's own principle says do not adopt a kernel you have not proven you need. |
 | 18 — repeatability, ISO 9283 | Is the ±0.1 mm claim true? | Pose repeatability vs accuracy, why the encoders cannot validate the encoders, dial-indicator procedure, sample size and confidence |
 | 16 — ROS2 tier | MoveIt2, state publishing, Foxglove | `ros2_control` architecture, DDS, lifecycle nodes, and where the real-time boundary must sit |

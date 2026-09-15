@@ -1,0 +1,80 @@
+#pragma once
+
+/// @file client.hpp
+/// The client end of the bridge — what Python, ROS2 and any UI bind to.
+///
+/// Note what is absent: there is no `step()`, no `send_now()`, no per-cycle
+/// callback. That is [ADR-0004](../../../../docs/adr/0004-system-decomposition.md)'s
+/// rule made structural. A client can *ask* for things and *observe* things; it
+/// cannot drive the loop, because the loop is in another process.
+///
+/// Liveness is a two-step handshake on purpose:
+///
+///   attach()        -> may read telemetry and state. Watchdog stays disarmed.
+///   take_control()  -> may command. Watchdog arms. From here the client MUST
+///                      call heartbeat() regularly or the RT core executes a
+///                      Category 2 stop (ADR-0005).
+///
+/// A monitoring or plotting client never calls take_control(), so it can crash,
+/// hang or be killed with no effect on the arm. Only a client that took
+/// responsibility is held to it.
+
+#include <cstdint>
+#include <string>
+
+#include "rc/bridge/layout.hpp"
+#include "rc/bridge/shared_region.hpp"
+
+namespace rc::bridge {
+
+class BridgeClient {
+ public:
+  BridgeClient() = default;
+  ~BridgeClient();
+  BridgeClient(const BridgeClient&) = delete;
+  BridgeClient& operator=(const BridgeClient&) = delete;
+
+  [[nodiscard]] RegionError attach(const std::string& name = kDefaultRegionName);
+
+  /// Take responsibility for commanding the arm. Arms the RT-side watchdog.
+  /// @return false if another client already holds control.
+  [[nodiscard]] bool take_control() noexcept;
+
+  /// Give control back cleanly and disarm the watchdog. Called by the
+  /// destructor, so a normal exit — including a Python interpreter shutting
+  /// down tidily — releases without tripping anything.
+  void release_control() noexcept;
+
+  /// Prove liveness. Must be called more often than the watchdog timeout.
+  void heartbeat() noexcept;
+
+  /// Queue a command. Non-blocking.
+  /// @return false if the ring is full — the RT core is not draining, which is
+  ///         itself a diagnosis, so the caller should surface it rather than
+  ///         spin.
+  [[nodiscard]] bool send(CommandRecord& command) noexcept;
+
+  /// Latest state. Wait-free with respect to the RT writer.
+  /// @return false only if a burst of writes prevented a clean read.
+  [[nodiscard]] bool state(rc::telemetry::StateSnapshot& out) const noexcept;
+
+  [[nodiscard]] ServerState server_state() const noexcept;
+
+  /// Has the RT core advanced since the last call? Distinguishes "idle" from
+  /// "dead", which the state enum alone cannot.
+  [[nodiscard]] bool server_alive() noexcept;
+
+  [[nodiscard]] std::uint32_t control_period_ns() const noexcept;
+  [[nodiscard]] std::uint64_t telemetry_dropped() const noexcept;
+  [[nodiscard]] bool attached() const noexcept { return region_.valid(); }
+  [[nodiscard]] bool in_control() const noexcept { return holds_control_; }
+
+ private:
+  SharedRegion region_;
+  std::uint64_t beat_ = 0;
+  std::uint64_t token_ = 0;
+  std::uint64_t last_server_beat_ = 0;
+  bool holds_control_ = false;
+};
+
+}  // namespace rc::bridge

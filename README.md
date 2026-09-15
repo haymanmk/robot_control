@@ -29,11 +29,23 @@ cmake -B build && cmake --build build -j
 C++20, plain CMake, no dependencies beyond libc. The control core deliberately
 does not require ROS to build, test, or measure — see [ADR-0003](docs/adr/0003-cpp-control-core-and-layering.md).
 
+## Status
+
+| Component | State |
+|---|---|
+| `core/rt` — clock, cyclic executive, lock-free rings, RT privileges | ✅ |
+| `core/telemetry` — per-cycle record, provenance, file sink | ✅ |
+| `core/bridge` — shared-memory transport, watchdog | ✅ |
+| `core/can`, `core/drive`, `core/model`, `core/control`, `core/safety` | next |
+
+See [`core/README.md`](core/README.md) for the layer map and the cyclic-path rules.
+
 ## Where to start
 
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — the milestone sequence and what each one teaches
 - [`bench/`](bench/) — the performance regression suite; **[loop_timing](bench/loop_timing/) needs no hardware**
 - [`notebooks/`](notebooks/) — analysis and write-ups, as plain `.py`
+- `tools/telemetry_dump.py` — read a telemetry run with nothing installed
 - [`docs/adr/`](docs/adr/) — architecture decisions and why they were made
 
 ## Decisions so far

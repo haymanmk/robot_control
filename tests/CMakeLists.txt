@@ -1,0 +1,10 @@
+add_executable(test_rings test_rings.cpp)
+target_include_directories(test_rings PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(test_rings PRIVATE rc::rt)
+add_test(NAME rings COMMAND test_rings)
+
+add_executable(test_bridge test_bridge.cpp)
+target_include_directories(test_bridge PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(test_bridge PRIVATE rc::bridge rc::telemetry)
+add_test(NAME bridge COMMAND test_bridge)
+set_tests_properties(bridge PROPERTIES TIMEOUT 120)
