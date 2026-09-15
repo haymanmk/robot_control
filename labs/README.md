@@ -8,5 +8,7 @@ for the full sequence and what each lab teaches.
 |---|---|---|
 | [01 — loop timing](01_loop_timing/) | How wrong is `sleep(dt - elapsed)`, in microseconds? | none |
 
+Build the C++ labs with `cmake -B build && cmake --build build -j`.
+
 Every lab follows the same shape: **predict → run → read the numbers → learn the
 fundamentals the numbers just demonstrated → go read how the vendor did it.**

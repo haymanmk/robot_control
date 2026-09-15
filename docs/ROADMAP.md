@@ -11,11 +11,17 @@ Reference baseline: [`Seeed-Projects/reBotArm_control_py`](https://github.com/Se
 
 ---
 
+Implementation language is **C++20** for everything cyclic; see
+[ADR-0003](adr/0003-cpp-control-core-and-layering.md) for the layering and the
+rules the cyclic path lives by. `core/rt` — the clock, the cyclic executive, RT
+privileges, and allocation-free instrumentation — is written and is what Lab 01
+demonstrates.
+
 ## Phase 0 — Timing and the bus (no robot needed for 01)
 
 | Lab | Question it answers | Fundamentals it forces you to learn |
 |---|---|---|
-| **01 — loop timing** | How wrong is `time.sleep(dt - elapsed)`, in microseconds? | Monotonic vs wall clocks, absolute vs relative deadlines, phase-locked loops, drift vs jitter, percentiles over averages, `SCHED_FIFO`, `mlockall`, why the GIL is not your main problem here |
+| **01 — loop timing** ✅ | How wrong is `time.sleep(dt - elapsed)`, in microseconds? | Monotonic vs wall clocks, absolute vs relative deadlines, phase-locked loops, drift vs jitter, percentiles over averages, `SCHED_FIFO`, `mlockall`, why the GIL is not your main problem here |
 | 02 — the CAN bus | What is actually on the wire at 500 Hz? | CAN framing, arbitration, bit stuffing, bus load, SocketCAN, `candump`/`cangen`, why bus utilisation — not the kernel — sets worst-case latency |
 | 03 — round-trip latency | Command frame out → feedback frame back, distribution? | Dead time in a control loop, its effect on achievable gains, joint-to-joint skew without a distributed clock |
 

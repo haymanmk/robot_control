@@ -3,7 +3,8 @@
 **Question:** The reBot vendor stack runs its 500 Hz loop with
 `time.sleep(dt - elapsed)`. How wrong is that, in microseconds?
 
-**No hardware needed.** Pure stdlib Python — runs anywhere.
+**No hardware needed.** Two implementations — pure-stdlib Python and C++ —
+so you can also answer: *how much of this is Python's fault?*
 
 ---
 
@@ -118,6 +119,42 @@ number that tells them apart.
 4. Run it while compiling something large in another terminal. That is the
    "under representative load" clause in ADR-0001's action item 3, and it is
    where honest numbers come from.
+
+## The C++ edition, and what it tells you
+
+```bash
+cmake -B build && cmake --build build -j
+./build/labs/01_loop_timing/cpp/lab01_loop_timing --seconds 10
+sudo ./build/labs/01_loop_timing/cpp/lab01_loop_timing --rt 80 --cpu 3
+```
+
+Same machine, same run length, both languages:
+
+```
+                    Python                    C++
+strategy            mean    max    drift      mean    max    drift
+relative-sleep      94.2u  286.4u  188.4ms    93.0u  330.3u  185.8ms
+absolute-sleep       0.0u  241.1u    0.1ms     0.1u 2269.4u    0.1ms
+clock-nanosleep      0.0u 1713.4u    0.1ms     0.0u  293.0u    0.1ms
+```
+
+**Predict before you look:** how much faster is C++ at hitting a 2 ms deadline?
+
+Answer: **not at all.** The numbers are the same to within run-to-run noise. On
+a non-RT kernel the scheduler dominates, and the scheduler does not care what
+language woke it up.
+
+That is not an argument against C++ — it is an argument against the *usual*
+argument for it. C++ is worth choosing here for **control**, not speed: no GC
+pause, no GIL, no allocation you did not write. Those properties do nothing for
+the median cycle and everything for the tail, once the cycle body stops being a
+busy-spin and starts being Pinocchio's RNEA plus seven CAN frames. See
+[ADR-0003](../../docs/adr/0003-cpp-control-core-and-layering.md).
+
+The C++ version is also a working demo of `core/rt` — its `clock-nanosleep`
+strategy *is* `rc::rt::CyclicTask`, the executive every cyclic loop in this
+project will run on. Read `core/rt/include/rc/rt/cyclic_task.hpp`: the comments
+there are the lesson, the code is the proof.
 
 ## Where the fundamentals live
 

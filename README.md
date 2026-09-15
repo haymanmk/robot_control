@@ -19,6 +19,16 @@ path ourselves:
 - [`Seeed-Projects/reBotArm_control_py`](https://github.com/Seeed-Projects/reBotArm_control_py) — HAL, Pinocchio kinematics/dynamics, controllers, trajectories, gravity calibration
 - [`Seeed-Projects/reBot-DevArm`](https://github.com/Seeed-Projects/reBot-DevArm) — hardware, BOM, URDF
 
+## Build
+
+```bash
+cmake -B build && cmake --build build -j
+./build/labs/01_loop_timing/cpp/lab01_loop_timing --seconds 10
+```
+
+C++20, plain CMake, no dependencies beyond libc. The control core deliberately
+does not require ROS to build, test, or measure — see [ADR-0003](docs/adr/0003-cpp-control-core-and-layering.md).
+
 ## Where to start
 
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — the milestone sequence and what each one teaches
@@ -31,3 +41,4 @@ path ourselves:
 |---|---|
 | [0001](docs/adr/0001-rtos-and-middleware-selection.md) | Three-tier architecture: hard-RT core / lock-free bridge / ROS2 + UI. Prototype on PREEMPT_RT before considering Xenomai. |
 | [0002](docs/adr/0002-target-platform-rebot-b601-rs.md) | Target is B601-RS over SocketCAN. Xenomai closed for this robot: our loop is an outer setpoint loop, and CAN bus load — not kernel latency — is the binding constraint. |
+| [0003](docs/adr/0003-cpp-control-core-and-layering.md) | C++20 control core with a plain-CMake build, layered `rt → can → drive → model → control`. Chosen for control over the cyclic path, not for speed — Lab 01 shows C++ and Python hit a 2 ms deadline equally well. |
