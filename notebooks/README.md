@@ -1,11 +1,13 @@
 # notebooks — analysis and write-ups
 
-Plain `.py` files in **percent format** (`# %%` cell markers), never `.ipynb`.
+These are plain `.py` files in **percent format**, using `# %%` cell markers.
+We never commit `.ipynb` files.
 
-They run as ordinary scripts with no Jupyter installed, execute cell-by-cell
-with inline plots in VS Code, PyCharm, and Jupyter, and diff like code — because
-they are code. `.ipynb` is JSON with embedded outputs: unreviewable diffs and a
-merge conflict on every execution.
+Percent-format files run as ordinary scripts with no Jupyter installed. They
+also run cell by cell, with inline plots, in VS Code, PyCharm, and Jupyter. And
+they diff like code, because they are code. An `.ipynb` file is JSON with
+outputs embedded: its diffs cannot be reviewed, and every run creates a merge
+conflict.
 
 ```python
 # %% [markdown]
@@ -17,10 +19,11 @@ import numpy as np, matplotlib.pyplot as plt
 ...
 ```
 
-If you want a browser notebook, pair one locally with `jupytext --sync`; the
-`.ipynb` stays gitignored.
+If you want a browser notebook, pair one locally with `jupytext --sync`. The
+`.ipynb` stays ignored by git.
 
-**Safety note:** a notebook cell holding a live arm handle is exactly the hazard
-[ADR-0005](../docs/adr/0005-safe-state-and-stop-architecture.md) exists for.
-Restarting the kernel drops the heartbeat; the RT core ramps to a compliant hold
-and stays powered. Do not disable the heartbeat to make a cell more convenient.
+**Safety note.** A notebook cell that holds a live arm handle is exactly the
+hazard [ADR-0005](../docs/adr/0005-safe-state-and-stop-architecture.md) exists
+for. Restarting the kernel drops the heartbeat; the real-time core ramps down
+to a compliant hold and stays powered. Do not disable the heartbeat to make a
+cell more convenient.

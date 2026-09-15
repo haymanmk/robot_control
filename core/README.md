@@ -1,30 +1,32 @@
 # core — the control library
 
-C++20, plain CMake, **no ROS and no Python**. That constraint is deliberate
-([ADR-0003](../docs/adr/0003-cpp-control-core-and-layering.md)): the core builds,
-tests and measures on its own, which is what keeps the real-time boundary honest
-as features accrete.
+C++20, plain CMake, **no ROS and no Python.** That constraint is deliberate
+([ADR-0003](../docs/adr/0003-cpp-control-core-and-layering.md)). The core
+builds, tests, and measures on its own. That is what keeps the real-time
+boundary honest as features are added.
 
 | Module | Status | Contents |
 |---|---|---|
-| [`rt/`](rt/) | ✅ | `CLOCK_MONOTONIC` clock, phase-locked `CyclicTask`, `SpscRing`, `Seqlock`, RT privileges, allocation-free histograms |
-| [`telemetry/`](telemetry/) | ✅ | fixed-size per-cycle record, provenance collection, file sink |
-| [`bridge/`](bridge/) | ✅ | shared-memory transport, watchdog, server/client endpoints |
-| `can/` | — | SocketCAN with `SO_TIMESTAMPING`, frame codec, bus statistics |
+| [`rt/`](rt/) | done | `CLOCK_MONOTONIC` clock; phase-locked `CyclicTask`; `SpscRing`; `Seqlock`; real-time privileges; allocation-free histograms |
+| [`telemetry/`](telemetry/) | done | fixed-size per-cycle record; provenance collection; file sink |
+| [`bridge/`](bridge/) | done | shared-memory transport; watchdog; server and client endpoints |
+| `can/` | — | SocketCAN with `SO_TIMESTAMPING`; frame encoding; bus statistics |
 | `drive/` | — | RobStride protocol |
-| `model/` | — | kinematics + dynamics (Pinocchio) |
+| `model/` | — | kinematics and dynamics (Pinocchio) |
 | `control/` | — | gravity compensation, impedance, trajectory tracking |
-| `safety/` | — | limits, stop-category supervisor ([ADR-0005](../docs/adr/0005-safe-state-and-stop-architecture.md)) |
+| `safety/` | — | limits; stop-category supervisor ([ADR-0005](../docs/adr/0005-safe-state-and-stop-architecture.md)) |
 
 ## Rules for the cyclic path
 
-Not style preferences. These are what "real-time" means here, and every function
-callable from inside the 500 Hz loop obeys all of them:
+These are not style preferences. They are what "real-time" means in this
+project, and every function that can be called from inside the 500 Hz loop
+follows all of them:
 
 - **No allocation.** No `new`, no growing containers, no `std::string`.
-- **No locks a non-RT thread can hold.** Lock-free only. A mutex lets a client
-  that was killed mid-critical-section block the control loop forever.
-- **No logging, no I/O** except the fieldbus itself.
+- **No locks that a non-real-time thread could hold.** Lock-free only. With a
+  mutex, a client killed in the middle of a critical section could block the
+  control loop forever.
+- **No logging and no I/O,** except the fieldbus itself.
 - **No exceptions across the cycle boundary.**
 - **Every cyclic function is `noexcept`** and documents its worst-case cost.
 
@@ -43,55 +45,65 @@ callable from inside the 500 Hz loop obeys all of them:
       FileSink thread ──► run.bin + run.json
 ```
 
-Two processes, so a client can segfault, hang, or be `SIGKILL`ed and the loop
-survives to execute a Category 2 stop. That is the whole reason for the
-separation ([ADR-0006](../docs/adr/0006-process-topology-and-rt-client-transport.md)).
+Two processes, so a client can crash, hang, or be killed with `kill -9`, and
+the loop survives to carry out a Category 2 stop. That is the whole reason for
+the separation ([ADR-0006](../docs/adr/0006-process-topology-and-rt-client-transport.md)).
 
-Note `take_control()` is a *separate step* from `attach()`. A client that only
-observes never arms the watchdog, so a plotting script dying is a non-event;
-only a client that accepted responsibility is held to it.
+Note that `take_control()` is a *separate step* from `attach()`. A client that
+only observes never arms the watchdog, so a plotting script that dies is a
+non-event. Only a client that has accepted responsibility is held to it.
 
 ## Try it
 
 ```bash
 cmake -B build && cmake --build build -j && ctest --test-dir build --output-on-failure
 
-# two terminals
+# in two terminals
 ./build/app/rc_core_demo/rc_core_demo --server
 ./build/app/rc_core_demo/rc_core_demo --client
 
 # then kill -9 the client, and read what happened
 python3 tools/telemetry_dump.py /tmp/rc_demo_telemetry
+
+# a new client is refused while the server is holding after a fault;
+# recovery is a deliberate act
+./build/app/rc_core_demo/rc_core_demo --client --clear-fault
 ```
 
-`Ctrl-C` on the client releases cleanly and causes no fault. `kill -9` trips the
-watchdog and starts the ramp. That difference is the three-trigger taxonomy in
-ADR-0005, made observable.
+`Ctrl-C` on the client releases control cleanly and causes no fault. `kill -9`
+trips the watchdog and starts the ramp. That difference is the three-trigger
+table in ADR-0005, made visible.
 
-## Verifying the lock-free code
+## Checking the lock-free code
 
-Wrong memory ordering fails rarely, unreproducibly, and never under a debugger.
-So:
+Wrong memory ordering fails rarely, is hard to reproduce, and never shows up
+under a debugger. So:
 
 ```bash
 cmake -B build-tsan -DRC_SANITIZE=thread && cmake --build build-tsan -j
 ctest --test-dir build-tsan --output-on-failure
 ```
 
-Both suites are clean under ThreadSanitizer, verified against a positive control
-so the silence means something. One limit worth knowing: GCC's TSan does **not**
-model `atomic_thread_fence` (it warns so at compile time). The seqlock therefore
-stores its payload through word-wise `std::atomic_ref`, so TSan's silence proves
-"no data race" by construction; the fence *ordering* argument is Boehm (2012) and
-the tearing oracle in `tests/test_rings.cpp` is its empirical check.
+Both test suites pass under ThreadSanitizer. This was checked against a known
+race first, so a clean result means something.
+
+One limit to know about: GCC's ThreadSanitizer does **not** model
+`atomic_thread_fence` (it prints a warning saying so). The seqlock therefore
+stores its payload through word-sized `std::atomic_ref`, so a clean TSan result
+proves "no data race" by construction. The argument that the fence *ordering*
+is right comes from Boehm (2012), and the tearing check in
+`tests/test_rings.cpp` is its empirical test.
 
 ## Review history
 
-The first version of the bridge shipped with three watchdog defects that a
-review caught and reproduced before any hardware saw it: a polling client
-could keep a dead controller looking alive, a tripped token was never revoked
-so no successor could ever recover, and a release/re-take between two ticks
-left the watchdog stuck. Each has a named regression test in
-`tests/test_bridge.cpp`. The lesson is not that the code was careless -- it
-had tests and it passed them. It is that a watchdog's tests must include the
-*adversarial* client, not only the well-behaved one.
+The first version of the bridge shipped with three watchdog defects. A code
+review caught and reproduced them before any hardware saw the code:
+
+- a client polling for control could keep a dead controller looking alive;
+- a tripped token was never revoked, so no successor could ever recover;
+- releasing and re-taking control between two ticks left the watchdog stuck.
+
+Each has a named regression test in `tests/test_bridge.cpp`. The lesson is not
+that the code was careless. It had tests, and it passed them. The lesson is
+that a watchdog's tests must include the *badly behaved* client, not only the
+well-behaved one.
