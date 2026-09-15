@@ -79,4 +79,19 @@ ctest --test-dir build-tsan --output-on-failure
 ```
 
 Both suites are clean under ThreadSanitizer, verified against a positive control
-so the silence means something.
+so the silence means something. One limit worth knowing: GCC's TSan does **not**
+model `atomic_thread_fence` (it warns so at compile time). The seqlock therefore
+stores its payload through word-wise `std::atomic_ref`, so TSan's silence proves
+"no data race" by construction; the fence *ordering* argument is Boehm (2012) and
+the tearing oracle in `tests/test_rings.cpp` is its empirical check.
+
+## Review history
+
+The first version of the bridge shipped with three watchdog defects that a
+review caught and reproduced before any hardware saw it: a polling client
+could keep a dead controller looking alive, a tripped token was never revoked
+so no successor could ever recover, and a release/re-take between two ticks
+left the watchdog stuck. Each has a named regression test in
+`tests/test_bridge.cpp`. The lesson is not that the code was careless -- it
+had tests and it passed them. It is that a watchdog's tests must include the
+*adversarial* client, not only the well-behaved one.

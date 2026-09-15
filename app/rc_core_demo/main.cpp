@@ -120,16 +120,26 @@ int run_server() {
 
   std::atomic<bool> stop_loop{false};
   std::uint64_t commands_seen = 0;
+  // A publish() failure is only known after the record is gone, so the flag
+  // rides on the *next* record. Otherwise it never reaches the file at all.
+  bool telemetry_lost_pending = false;
 
   const rt::CyclicReport report = task.run_until(stop_loop, [&](std::uint64_t cycle, rt::Nanos dt) {
     const rt::Nanos now = rt::monotonic_now();
     std::uint32_t flags = telemetry::kFlagNone;
+    if (telemetry_lost_pending) {
+      flags |= telemetry::kFlagTelemetryLost;
+      telemetry_lost_pending = false;
+    }
 
     // ── 1. watchdog, before anything else trusts a client ──
     if (server.tick(cycle)) {
       std::printf("[cycle %llu] WATCHDOG: client lost -- Category 2 stop\n",
                   static_cast<unsigned long long>(cycle));
       std::fflush(stdout);
+      // kFlagClientLost is what lets the flight recorder distinguish "the
+      // client died" from "the client asked us to stop": both reach kStopping.
+      flags |= telemetry::kFlagClientLost;
       mode = ControlMode::kStopping;
       stop_started_ns = now.count();
       std::memcpy(hold, plant.pos, sizeof(hold));
@@ -140,10 +150,21 @@ int run_server() {
     bridge::CommandRecord cmd{};
     while (server.poll_command(cmd)) {
       ++commands_seen;
+      const auto type = static_cast<CommandType>(cmd.type);
       if (mode == ControlMode::kStopping || mode == ControlMode::kHolding) {
-        continue;  // a stopped arm does not accept setpoints; recovery is explicit
+        // A stopped arm does not accept setpoints. Recovery is an explicit,
+        // operator-initiated act (ADR-0005 §4) -- and only once the ramp has
+        // finished, never mid-deceleration.
+        if (type == CommandType::kClearFault && mode == ControlMode::kHolding) {
+          std::printf("[cycle %llu] fault cleared by operator; idle\n",
+                      static_cast<unsigned long long>(cycle));
+          std::fflush(stdout);
+          mode = ControlMode::kIdle;
+          server.set_state(ServerState::kIdle);
+        }
+        continue;
       }
-      switch (static_cast<CommandType>(cmd.type)) {
+      switch (type) {
         case CommandType::kSetTarget:
           for (unsigned j = 0; j < kJoints && j < cmd.joint_count; ++j) {
             target[j] = static_cast<double>(cmd.pos[j]);
@@ -203,7 +224,8 @@ int run_server() {
       rec.meas_vel[j] = static_cast<float>(plant.vel[j]);
     }
     if (!server.publish(rec)) {
-      flags |= telemetry::kFlagTelemetryLost;
+      telemetry_lost_pending = true;  // surfaces on the next record
+      flags |= telemetry::kFlagTelemetryLost;  // and on this cycle's live snapshot
     }
 
     telemetry::StateSnapshot snap{};
@@ -238,10 +260,14 @@ int run_server() {
   return 0;
 }
 
-int run_client() {
+int run_client(bool clear_fault) {
   install_signal_handlers();
   bridge::BridgeClient client;
-  const bridge::RegionError err = client.attach();
+  bridge::RegionError err = client.attach();
+  for (int attempt = 0; err == bridge::RegionError::kNotReady && attempt < 50; ++attempt) {
+    ::usleep(10'000);  // server is mid-open(); this is the retryable case
+    err = client.attach();
+  }
   if (err != bridge::RegionError::kOk) {
     std::fprintf(stderr, "attach failed: %s\n", to_string(err));
     return 1;
@@ -249,6 +275,21 @@ int run_client() {
   if (!client.take_control()) {
     std::fprintf(stderr, "another client holds control\n");
     return 1;
+  }
+  if (client.server_state() == ServerState::kHolding) {
+    if (!clear_fault) {
+      std::fprintf(stderr,
+                   "server is HOLDING after a fault. Recovery is deliberate: re-run with "
+                   "--clear-fault once you have checked the arm.\n");
+      return 3;
+    }
+    bridge::CommandRecord clear{};
+    clear.type = static_cast<std::uint32_t>(CommandType::kClearFault);
+    if (!client.send(clear)) {
+      std::fprintf(stderr, "could not send kClearFault\n");
+      return 1;
+    }
+    std::printf("client: fault cleared\n");
   }
   std::printf("client: in control, period %u ns. Ctrl-C releases cleanly; "
               "`kill -9 %d` does not.\n",
@@ -286,12 +327,13 @@ int run_client() {
 
 int main(int argc, char** argv) {
   const std::string mode = argc > 1 ? argv[1] : "--server";
+  const bool clear_fault = argc > 2 && std::string(argv[2]) == "--clear-fault";
   if (mode == "--client") {
-    return run_client();
+    return run_client(clear_fault);
   }
   if (mode == "--server") {
     return run_server();
   }
-  std::printf("usage: %s [--server | --client]\n", argv[0]);
+  std::printf("usage: %s [--server | --client [--clear-fault]]\n", argv[0]);
   return 2;
 }

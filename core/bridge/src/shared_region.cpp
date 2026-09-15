@@ -6,21 +6,14 @@
 #include <unistd.h>
 
 #include <cerrno>
-#include <ctime>
 #include <new>
 #include <utility>
 
+#include "rc/rt/clock.hpp"
+
 namespace rc::bridge {
 namespace {
-
 constexpr std::size_t kRegionSize = sizeof(BridgeRegion);
-
-std::int64_t monotonic_ns() noexcept {
-  timespec ts{};
-  ::clock_gettime(CLOCK_MONOTONIC, &ts);
-  return static_cast<std::int64_t>(ts.tv_sec) * 1'000'000'000 + ts.tv_nsec;
-}
-
 }  // namespace
 
 const char* to_string(RegionError e) noexcept {
@@ -30,6 +23,7 @@ const char* to_string(RegionError e) noexcept {
     case RegionError::kTruncateFailed: return "ftruncate failed";
     case RegionError::kMapFailed: return "mmap failed";
     case RegionError::kNotFound: return "region does not exist (is the RT core running?)";
+    case RegionError::kNotReady: return "region exists but is still initialising (retry)";
     case RegionError::kBadMagic: return "bad magic (not a bridge region, or corrupt)";
     case RegionError::kVersionMismatch: return "layout version mismatch (rebuild the client)";
     case RegionError::kSizeMismatch: return "record size mismatch (rebuild the client)";
@@ -82,7 +76,9 @@ void SharedRegion::close() noexcept {
   // over, and a client destructor must never remove the server's region.
 }
 
-RegionError SharedRegion::create(const std::string& name, SharedRegion& out, bool lock_memory) {
+RegionError SharedRegion::create(const std::string& name, SharedRegion& out,
+                                 std::uint32_t control_period_ns,
+                                 std::uint32_t watchdog_timeout_cycles, bool lock_memory) {
   // Replace any stale region from a previous run. A crashed server leaves its
   // shm behind; reusing it would inherit whatever indices it died with.
   ::shm_unlink(name.c_str());
@@ -103,15 +99,14 @@ RegionError SharedRegion::create(const std::string& name, SharedRegion& out, boo
     return RegionError::kMapFailed;
   }
 
-  // ftruncate zero-fills, so the atomics are already at their zero value; the
-  // placement-new makes that explicit and runs the members' constructors.
+  // ftruncate zero-fills, so magic is already 0 == "not ready" and any client
+  // that races us here gets kNotReady rather than garbage.
   auto* region = new (addr) BridgeRegion{};
   region->snapshot.reset();
   region->telemetry.reset();
   region->commands.reset();
 
   BridgeHeader& h = region->header;
-  h.magic = kMagic;
   h.layout_version = kLayoutVersion;
   h.header_size = static_cast<std::uint32_t>(sizeof(BridgeHeader));
   h.telemetry_record_size = static_cast<std::uint32_t>(sizeof(rc::telemetry::TelemetryRecord));
@@ -119,10 +114,12 @@ RegionError SharedRegion::create(const std::string& name, SharedRegion& out, boo
   h.snapshot_size = static_cast<std::uint32_t>(sizeof(rc::telemetry::StateSnapshot));
   h.telemetry_capacity = static_cast<std::uint32_t>(kTelemetryCapacity);
   h.command_capacity = static_cast<std::uint32_t>(kCommandCapacity);
-  h.server_start_ns = monotonic_ns();
+  h.control_period_ns = control_period_ns;
+  h.server_start_ns = rc::rt::monotonic_now().count();
   h.server_pid = static_cast<std::uint64_t>(::getpid());
+  h.watchdog_timeout_cycles.store(watchdog_timeout_cycles, std::memory_order_relaxed);
   h.server_state.store(static_cast<std::uint32_t>(ServerState::kStarting),
-                       std::memory_order_release);
+                       std::memory_order_relaxed);
 
   out.close();
   out.region_ = region;
@@ -130,16 +127,22 @@ RegionError SharedRegion::create(const std::string& name, SharedRegion& out, boo
   out.name_ = name;
   out.owner_ = true;
 
+  RegionError result = RegionError::kOk;
   if (lock_memory) {
     if (::mlock(addr, kRegionSize) == 0) {
       out.locked_ = true;
     } else {
-      // Not fatal: report it and let the caller decide. Silently running an RT
-      // loop over pageable shared memory is the failure we are avoiding.
-      return RegionError::kMlockFailed;
+      // Not fatal: the region is still usable. Reported so the caller can decide
+      // whether a pageable bridge is acceptable, rather than silently running an
+      // RT loop over memory that can fault.
+      result = RegionError::kMlockFailed;
     }
   }
-  return RegionError::kOk;
+
+  // Publish. Everything a client validates or reads is complete before this
+  // store; the release pairs with the acquire load in attach().
+  h.magic.store(kMagic, std::memory_order_release);
+  return result;
 }
 
 RegionError SharedRegion::attach(const std::string& name, SharedRegion& out, bool read_only) {
@@ -150,7 +153,15 @@ RegionError SharedRegion::attach(const std::string& name, SharedRegion& out, boo
   }
 
   struct stat st {};
-  if (::fstat(fd, &st) != 0 || static_cast<std::size_t>(st.st_size) < kRegionSize) {
+  if (::fstat(fd, &st) != 0) {
+    ::close(fd);
+    return RegionError::kShmOpenFailed;
+  }
+  if (st.st_size == 0) {
+    ::close(fd);
+    return RegionError::kNotReady;  // created, not yet ftruncated
+  }
+  if (static_cast<std::size_t>(st.st_size) < kRegionSize) {
     ::close(fd);
     return RegionError::kSizeMismatch;
   }
@@ -165,14 +176,18 @@ RegionError SharedRegion::attach(const std::string& name, SharedRegion& out, boo
   auto* region = static_cast<BridgeRegion*>(addr);
   const BridgeHeader& h = region->header;
 
-  // Validate before trusting anything else in the mapping. Order matters: magic
-  // first (is this even ours?), then version, then the sizes that would cause
-  // silent misinterpretation rather than a crash.
   auto reject = [&](RegionError e) {
     ::munmap(addr, kRegionSize);
     return e;
   };
-  if (h.magic != kMagic) {
+
+  // Magic first, with acquire: it is the server's publish gate, and nothing
+  // else in the header is trustworthy until it reads back as ours.
+  const std::uint64_t magic = h.magic.load(std::memory_order_acquire);
+  if (magic == 0) {
+    return reject(RegionError::kNotReady);
+  }
+  if (magic != kMagic) {
     return reject(RegionError::kBadMagic);
   }
   if (h.layout_version != kLayoutVersion) {

@@ -48,9 +48,19 @@ class BridgeServer {
   /// Advance the server heartbeat and evaluate the client watchdog. Call once
   /// per cycle, before poll_command().
   ///
+  /// Liveness is judged per *token*: the watchdog baselines whenever the
+  /// control token changes value, so a client that releases and re-takes
+  /// control back-to-back is re-armed even if no cycle observed the gap.
+  ///
+  /// On a trip the server **revokes** the token (stores 0). The dead client
+  /// held nothing worth keeping, and a successor must be able to take control
+  /// without restarting the RT core -- that is what makes a Jupyter kernel
+  /// restart recoverable. A stalled-not-dead client that later resumes
+  /// discovers the revocation on its next heartbeat() and stands down.
+  ///
   /// @return true if the watchdog tripped **on this cycle** — the caller starts
-  ///         the Category 2 ramp. Subsequent cycles return false while the trip
-  ///         persists, so the caller is not re-triggered mid-ramp.
+  ///         the Category 2 ramp. It fires once per trip, never re-triggering
+  ///         mid-ramp.
   [[nodiscard]] bool tick(std::uint64_t cycle) noexcept;
 
   /// True once a client has taken control and has not been lost.
@@ -74,11 +84,10 @@ class BridgeServer {
 
  private:
   SharedRegion region_;
+  std::uint64_t watched_token_ = 0;     ///< token value the watchdog is judging
   std::uint64_t last_heartbeat_ = 0;
   std::uint64_t last_progress_cycle_ = 0;
   std::uint32_t timeout_cycles_ = 50;
-  bool armed_ = false;      ///< a client has taken control at least once
-  bool tripped_ = false;    ///< watchdog already fired; do not re-fire
   std::uint64_t server_beat_ = 0;
 };
 

@@ -22,6 +22,7 @@ enum class RegionError {
   kTruncateFailed,
   kMapFailed,
   kNotFound,
+  kNotReady,     ///< region exists but the server has not finished initialising it: retry
   kBadMagic,
   kVersionMismatch,
   kSizeMismatch,
@@ -41,9 +42,13 @@ class SharedRegion {
   SharedRegion& operator=(SharedRegion&& other) noexcept;
 
   /// Server side: create (or replace) the region and construct the rings in it.
+  /// Every header field is populated before the magic is published, so a
+  /// client can never observe a partially initialised region.
   /// @param lock_memory mlock the mapping. The RT side touches it every cycle,
   ///        so a major fault here would be a multi-millisecond stall.
   [[nodiscard]] static RegionError create(const std::string& name, SharedRegion& out,
+                                          std::uint32_t control_period_ns,
+                                          std::uint32_t watchdog_timeout_cycles,
                                           bool lock_memory = true);
 
   /// Client side: attach to an existing region, validating magic, version and

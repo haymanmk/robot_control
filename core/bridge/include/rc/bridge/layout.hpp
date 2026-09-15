@@ -82,8 +82,14 @@ enum class ServerState : std::uint32_t {
 };
 
 /// Fixed-size preamble. Every field before the rings is validated at attach.
+///
+/// `magic` is atomic and is written **last** by the server with release
+/// semantics; a client loads it with acquire before trusting anything else.
+/// That makes it the publish gate: the region is visible by name the moment
+/// shm_open() returns, and without this a client attaching a few hundred
+/// microseconds early would read a zero period or a half-written header.
 struct BridgeHeader {
-  std::uint64_t magic;
+  std::atomic<std::uint64_t> magic;
   std::uint32_t layout_version;
   std::uint32_t header_size;
   std::uint32_t telemetry_record_size;

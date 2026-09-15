@@ -270,6 +270,205 @@ void test_watchdog_trips_on_client_kill() {
   CHECK_MSG(server.watchdog_trips() == 1,
             "watchdog must fire exactly once, not re-trigger every cycle mid-ramp: got " +
                 std::to_string(server.watchdog_trips()));
+  CHECK_MSG(!server.client_in_control(), "a tripped holder must have been revoked");
+
+  // Recovery without restarting the RT core: this is the "Jupyter kernel
+  // restart is recoverable by construction" promise from ADR-0006.
+  BridgeClient successor;
+  CHECK(successor.attach(name) == RegionError::kOk);
+  CHECK_MSG(successor.take_control(), "a successor must be able to take control after a trip");
+  bool trip_after_recovery = false;
+  for (std::uint64_t i = 0; i < 100; ++i, ++cycle) {
+    successor.heartbeat();
+    if (server.tick(cycle)) {
+      trip_after_recovery = true;
+    }
+  }
+  CHECK_MSG(!trip_after_recovery, "a heartbeating successor must not be tripped");
+  CHECK_MSG(server.client_in_control(), "server must see the successor as in control");
+
+  server.close();
+  SharedRegion::unlink(name);
+}
+
+/// Review finding: a client polling take_control() while waiting for a dead
+/// holder to be cleared used to publish a heartbeat on every failed attempt,
+/// which kept the corpse looking alive and the watchdog silent forever.
+void test_poller_cannot_keep_dead_holder_alive() {
+  const std::string name = "/rc_test_poller";
+  SharedRegion::unlink(name);
+  BridgeServer server;
+  CHECK(server.open(name, kPeriodNs, false) == RegionError::kOk);
+  server.set_watchdog_timeout_cycles(20);
+
+  const pid_t holder = spawn_client(name, /*take_control=*/true);
+  CHECK_MSG(holder > 0, "fork failed");
+  std::uint64_t cycle = 0;
+  for (; cycle < 100; ++cycle) {
+    (void)server.tick(cycle);
+    ::usleep(1000);
+  }
+  CHECK_MSG(server.client_in_control(), "holder should be in control before the kill");
+  ::kill(holder, SIGKILL);
+  int status = 0;
+  ::waitpid(holder, &status, 0);
+
+  BridgeClient poller;
+  CHECK(poller.attach(name) == RegionError::kOk);
+  bool tripped = false;
+  bool poller_got_control = false;
+  for (; cycle < 600; ++cycle) {
+    if (server.tick(cycle)) {
+      tripped = true;
+    }
+    if (cycle % 5 == 0 && !poller_got_control) {
+      poller_got_control = poller.take_control();  // "wait for control to free up"
+    }
+    if (poller_got_control) {
+      poller.heartbeat();
+    }
+    ::usleep(500);
+  }
+  CHECK_MSG(tripped, "watchdog must trip even while another client polls take_control()");
+  CHECK_MSG(poller_got_control, "the poller must eventually win control after the trip");
+
+  server.close();
+  SharedRegion::unlink(name);
+}
+
+/// Review finding: release()+take_control() between two ticks never showed the
+/// server a zero token, so a previously tripped watchdog stayed tripped forever.
+/// Now the server judges liveness per token *value*.
+void test_release_and_retake_between_ticks_rearms() {
+  const std::string name = "/rc_test_retake";
+  SharedRegion::unlink(name);
+  BridgeServer server;
+  CHECK(server.open(name, kPeriodNs, false) == RegionError::kOk);
+  server.set_watchdog_timeout_cycles(20);
+
+  BridgeClient c;
+  CHECK(c.attach(name) == RegionError::kOk);
+  CHECK(c.take_control());
+  std::uint64_t cycle = 0;
+  for (; cycle < 50; ++cycle) {
+    c.heartbeat();
+    (void)server.tick(cycle);
+  }
+  // Client stalls past the timeout (GC pause, debugger, SIGSTOP...).
+  bool tripped = false;
+  for (; cycle < 100; ++cycle) {
+    if (server.tick(cycle)) {
+      tripped = true;
+    }
+  }
+  CHECK_MSG(tripped, "stall must trip");
+  CHECK_MSG(!c.in_control(), "stalled client must discover it was revoked");
+
+  // Client resumes and re-takes control -- both calls land between two ticks.
+  c.release_control();
+  CHECK(c.take_control());
+  bool re_tripped = false;
+  for (; cycle < 300; ++cycle) {
+    c.heartbeat();
+    if (server.tick(cycle)) {
+      re_tripped = true;
+    }
+  }
+  CHECK_MSG(!re_tripped, "a re-armed, heartbeating client must not be tripped");
+  CHECK_MSG(server.client_in_control(), "server must see the re-taken client as in control");
+  CHECK_MSG(server.watchdog_trips() == 1, "exactly one trip expected");
+
+  server.close();
+  SharedRegion::unlink(name);
+}
+
+/// An observer calling heartbeat() must not feed liveness for the controller.
+void test_observer_heartbeat_does_not_feed_liveness() {
+  const std::string name = "/rc_test_obs_hb";
+  SharedRegion::unlink(name);
+  BridgeServer server;
+  CHECK(server.open(name, kPeriodNs, false) == RegionError::kOk);
+  server.set_watchdog_timeout_cycles(20);
+
+  BridgeClient holder;
+  BridgeClient observer;
+  CHECK(holder.attach(name) == RegionError::kOk);
+  CHECK(observer.attach(name) == RegionError::kOk);
+  CHECK(holder.take_control());
+  std::uint64_t cycle = 0;
+  for (; cycle < 30; ++cycle) {
+    holder.heartbeat();
+    (void)server.tick(cycle);
+  }
+  // Holder goes silent; observer keeps calling heartbeat() (harmlessly, it thinks).
+  bool tripped = false;
+  for (; cycle < 200; ++cycle) {
+    observer.heartbeat();
+    CommandRecord cmd{};
+    cmd.type = static_cast<std::uint32_t>(CommandType::kSetTarget);
+    CHECK_MSG(!observer.send(cmd), "an observer's command must be refused");
+    if (server.tick(cycle)) {
+      tripped = true;
+    }
+  }
+  CHECK_MSG(tripped, "observer heartbeats must not keep a silent holder alive");
+
+  server.close();
+  SharedRegion::unlink(name);
+}
+
+/// Review finding: command sequences shared a counter with heartbeats, so gaps
+/// appeared whenever heartbeat() ran between sends -- contradicting the
+/// documented contract that gaps mean loss.
+void test_command_sequence_is_contiguous() {
+  const std::string name = "/rc_test_seq";
+  SharedRegion::unlink(name);
+  BridgeServer server;
+  CHECK(server.open(name, kPeriodNs, false) == RegionError::kOk);
+  BridgeClient c;
+  CHECK(c.attach(name) == RegionError::kOk);
+  CHECK(c.take_control());
+
+  std::uint64_t previous = 0;
+  bool contiguous = true;
+  for (int i = 0; i < 20; ++i) {
+    for (int k = 0; k < 7; ++k) {
+      c.heartbeat();  // interleave liveness between sends
+    }
+    CommandRecord cmd{};
+    cmd.type = static_cast<std::uint32_t>(CommandType::kSetTarget);
+    CHECK(c.send(cmd));
+    CommandRecord got{};
+    CHECK(server.poll_command(got));
+    if (previous != 0 && got.sequence != previous + 1) {
+      contiguous = false;
+    }
+    previous = got.sequence;
+  }
+  CHECK_MSG(contiguous, "command sequence numbers must be contiguous across heartbeats");
+
+  server.close();
+  SharedRegion::unlink(name);
+}
+
+/// Review finding: drain_once() while the sink thread runs made two consumers
+/// pop a single-consumer ring.
+void test_drain_once_refused_while_sink_thread_runs() {
+  const std::string name = "/rc_test_drain";
+  SharedRegion::unlink(name);
+  BridgeServer server;
+  CHECK(server.open(name, kPeriodNs, false) == RegionError::kOk);
+  rc::telemetry::FileSink sink;
+  CHECK(sink.open("/tmp/rc_test_drain", Provenance::collect()));
+  sink.start(server, 1);
+  sleep_ms(5);
+  TelemetryRecord rec{};
+  for (int i = 0; i < 10; ++i) {
+    CHECK(server.publish(rec));
+  }
+  CHECK_MSG(sink.drain_once(server) == 0, "drain_once must refuse while the thread owns the ring");
+  sink.stop();
+  CHECK_EQ(sink.records_written(), 10u);
 
   server.close();
   SharedRegion::unlink(name);
@@ -336,6 +535,11 @@ int main() {
   test_file_sink();
   test_control_is_exclusive();
   test_observer_death_does_not_trip_watchdog();
+  test_observer_heartbeat_does_not_feed_liveness();
+  test_command_sequence_is_contiguous();
+  test_drain_once_refused_while_sink_thread_runs();
+  test_release_and_retake_between_ticks_rearms();
   test_watchdog_trips_on_client_kill();
+  test_poller_cannot_keep_dead_holder_alive();
   return rc::test::finish("bridge");
 }

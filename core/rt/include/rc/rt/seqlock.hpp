@@ -18,30 +18,42 @@
 /// never waits for readers, and readers never block the writer -- which is
 /// exactly the asymmetry the RT thread needs.
 ///
-/// ## The caveat, and what was actually measured
+/// ## Why the data is stored as atomic words
 ///
-/// The reader may copy bytes while the writer is modifying them. Under a strict
-/// reading of the C++ memory model that is a data race, because `storage_` is
-/// touched non-atomically on both sides. The sequence check means such a torn
-/// copy is always *detected and discarded*, never returned, which is why this
-/// is the shape Linux's own seqlock has had for twenty years.
+/// The classic seqlock copies the payload with plain loads and stores while the
+/// other side may be writing it. That is a data race in the C++ memory model:
+/// the *protocol* discards the torn copy, but the *language* says the torn read
+/// was undefined behaviour before it was ever compared. Two things follow from
+/// taking that seriously rather than waving at Linux:
 ///
-/// The usual next sentence is "and ThreadSanitizer will complain about it."
-/// On this toolchain it does not: `tests/test_rings.cpp` runs a 300k-iteration
-/// reader against a saturating writer under `-fsanitize=thread` and TSan reports
-/// nothing (verified against a positive control, so the silence is meaningful).
-/// TSan models `atomic_thread_fence`, and the fences below are what make the
-/// pattern well-formed enough for it. Do not read that as a proof of
-/// portability: a different compiler or architecture may judge it differently,
-/// and the strictly-conforming alternative is word-wise `std::atomic_ref` with
-/// relaxed ordering, which costs nothing on x86-64 and ARM.
+///   1. The payload is accessed word-by-word through `std::atomic_ref` with
+///      relaxed ordering. Relaxed atomics compile to ordinary loads and stores
+///      on x86-64 and AArch64, so this costs nothing; what it buys is that
+///      every access is an atomic access and there is no data race left for
+///      the compiler to exploit.
+///   2. The *ordering* between the sequence counter and the payload still
+///      comes from fences, in the construction from Boehm, "Can Seqlocks Get
+///      Along with Programming Language Memory Models?" (MSPC 2012): a release
+///      fence after the odd store, an acquire fence before the closing load.
 ///
-/// What must NOT happen is someone "fixing" this with a mutex. A mutex here
-/// would let a reader that was killed mid-critical-section block the RT thread
-/// forever -- the single failure this entire architecture exists to prevent
-/// (ADR-0006).
+/// ## What ThreadSanitizer can and cannot tell you here
+///
+/// GCC prints `atomic_thread_fence is not supported with -fsanitize=thread`
+/// when compiling this file. It means what it says: **TSan does not model
+/// fences.** An earlier version of this comment claimed the opposite, based on
+/// TSan being silent on the fence-based seqlock; that silence was not evidence
+/// of anything. With atomic_ref, TSan's silence *does* mean "no data race",
+/// because there is none by construction -- but it still says nothing about
+/// whether the fence ordering is right. That argument is Boehm's, and the
+/// tearing oracle in `tests/test_rings.cpp` is the empirical check.
+///
+/// What must NOT happen is someone "fixing" any of this with a mutex. A mutex
+/// here would let a reader that was killed mid-critical-section block the RT
+/// thread forever -- the single failure this entire architecture exists to
+/// prevent (ADR-0006).
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <type_traits>
@@ -54,14 +66,24 @@ template <typename T>
 class Seqlock {
   static_assert(std::is_trivially_copyable_v<T>,
                 "shared-memory snapshots must be trivially copyable");
+  static_assert(std::atomic_ref<std::uint64_t>::is_always_lock_free,
+                "word-wise atomic access must be lock-free or this is not wait-free");
+
+  using Word = std::uint64_t;
+  static constexpr std::size_t kWords = (sizeof(T) + sizeof(Word) - 1) / sizeof(Word);
 
  public:
   /// Writer side. Wait-free: bounded steps, no blocking, safe in the cyclic path.
   void store(const T& value) noexcept {
+    Word tmp[kWords] = {};
+    std::memcpy(tmp, &value, sizeof(T));
+
     const std::uint64_t s = seq_.load(std::memory_order_relaxed);
     seq_.store(s + 1, std::memory_order_relaxed);        // odd: write in progress
-    std::atomic_thread_fence(std::memory_order_release);  // odd is visible first
-    std::memcpy(&storage_, &value, sizeof(T));
+    std::atomic_thread_fence(std::memory_order_release);  // odd is visible before payload
+    for (std::size_t i = 0; i < kWords; ++i) {
+      std::atomic_ref<Word>(words_[i]).store(tmp[i], std::memory_order_relaxed);
+    }
     seq_.store(s + 2, std::memory_order_release);         // even: stable again
   }
 
@@ -70,14 +92,18 @@ class Seqlock {
   ///        cannot win in a few attempts is being starved by a writer running at
   ///        a much higher rate, and should be told rather than spin.
   [[nodiscard]] bool load(T& out, unsigned max_attempts = 16) const noexcept {
+    Word tmp[kWords];
     for (unsigned attempt = 0; max_attempts == 0 || attempt < max_attempts; ++attempt) {
       const std::uint64_t before = seq_.load(std::memory_order_acquire);
       if (before & 1u) {
         continue;  // writer mid-update
       }
-      std::memcpy(&out, &storage_, sizeof(T));
-      std::atomic_thread_fence(std::memory_order_acquire);
+      for (std::size_t i = 0; i < kWords; ++i) {
+        tmp[i] = std::atomic_ref<Word>(words_[i]).load(std::memory_order_relaxed);
+      }
+      std::atomic_thread_fence(std::memory_order_acquire);  // payload before the re-check
       if (seq_.load(std::memory_order_relaxed) == before) {
+        std::memcpy(&out, tmp, sizeof(T));
         return true;
       }
       // Sequence moved: the copy may be torn. Discard it and try again.
@@ -93,12 +119,16 @@ class Seqlock {
   /// Only safe before either side is running.
   void reset() noexcept {
     seq_.store(0, std::memory_order_relaxed);
-    std::memset(&storage_, 0, sizeof(T));
+    for (std::size_t i = 0; i < kWords; ++i) {
+      words_[i] = 0;
+    }
   }
 
  private:
   alignas(kCacheLine) std::atomic<std::uint64_t> seq_{0};
-  alignas(kCacheLine) T storage_{};
+  // mutable so a const load() can form a non-const atomic_ref; the accesses are
+  // reads, the qualifier is an artefact of atomic_ref's interface.
+  alignas(kCacheLine) mutable Word words_[kWords]{};
 };
 
 }  // namespace rc::rt

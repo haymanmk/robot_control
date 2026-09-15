@@ -63,6 +63,13 @@ bool FileSink::open(const std::string& path_prefix, const Provenance& provenance
 }
 
 std::size_t FileSink::drain_once(rc::bridge::BridgeServer& server) {
+  if (running_.load(std::memory_order_acquire)) {
+    return 0;  // the worker owns the consumer side; see header
+  }
+  return drain_impl(server);
+}
+
+std::size_t FileSink::drain_impl(rc::bridge::BridgeServer& server) {
   if (file_ == nullptr || buffer_.empty()) {
     return 0;
   }
@@ -85,23 +92,27 @@ std::size_t FileSink::drain_once(rc::bridge::BridgeServer& server) {
 }
 
 void FileSink::run(rc::bridge::BridgeServer& server, unsigned poll_interval_ms) {
-  running_.store(true, std::memory_order_release);
   while (!stop_requested_.load(std::memory_order_acquire)) {
-    drain_once(server);
+    drain_impl(server);
     std::this_thread::sleep_for(std::chrono::milliseconds(poll_interval_ms));
   }
-  drain_once(server);  // final sweep: whatever the loop published on its way out
+  drain_impl(server);  // final sweep: whatever the loop published on its way out
   if (file_ != nullptr) {
     std::fflush(file_);
   }
-  running_.store(false, std::memory_order_release);
 }
 
 void FileSink::start(rc::bridge::BridgeServer& server, unsigned poll_interval_ms) {
-  if (thread_.joinable()) {
+  if (running_.load(std::memory_order_acquire)) {
     return;
   }
   stop_requested_.store(false, std::memory_order_release);
+  // Ownership is handed to the worker *before* it exists, on this thread, so
+  // there is no window in which both a caller and the worker believe they may
+  // pop. The worker never touches `thread_` -- it is being move-assigned here
+  // while the worker is already running, and reading it from the worker is a
+  // race ThreadSanitizer caught in an earlier version.
+  running_.store(true, std::memory_order_release);
   thread_ = std::thread(&FileSink::run, this, std::ref(server), poll_interval_ms);
 }
 
@@ -110,6 +121,7 @@ void FileSink::stop() {
   if (thread_.joinable()) {
     thread_.join();
   }
+  running_.store(false, std::memory_order_release);
 }
 
 }  // namespace rc::telemetry

@@ -46,12 +46,18 @@ class BridgeClient {
   void release_control() noexcept;
 
   /// Prove liveness. Must be called more often than the watchdog timeout.
+  ///
+  /// Only a client that holds control writes the heartbeat. An observer's
+  /// heartbeat would otherwise keep a *dead* controller looking alive -- the
+  /// watchdog cannot tell whose hand is on the counter, so only the responsible
+  /// hand may touch it. If the server has revoked our token (watchdog trip
+  /// while we were stalled), this discovers it and stands down.
   void heartbeat() noexcept;
 
-  /// Queue a command. Non-blocking.
-  /// @return false if the ring is full — the RT core is not draining, which is
-  ///         itself a diagnosis, so the caller should surface it rather than
-  ///         spin.
+  /// Queue a command. Non-blocking. Refused unless this client holds control.
+  /// @return false if not in control, or if the ring is full — the RT core is
+  ///         not draining, which is itself a diagnosis, so the caller should
+  ///         surface it rather than spin.
   [[nodiscard]] bool send(CommandRecord& command) noexcept;
 
   /// Latest state. Wait-free with respect to the RT writer.
@@ -67,11 +73,19 @@ class BridgeClient {
   [[nodiscard]] std::uint32_t control_period_ns() const noexcept;
   [[nodiscard]] std::uint64_t telemetry_dropped() const noexcept;
   [[nodiscard]] bool attached() const noexcept { return region_.valid(); }
-  [[nodiscard]] bool in_control() const noexcept { return holds_control_; }
+
+  /// Live check against the shared token, so a revocation by the server is
+  /// visible here without waiting for the next heartbeat().
+  [[nodiscard]] bool in_control() noexcept { return verify_control(); }
 
  private:
+  /// Confirms our token is still the one in the region; clears local state if
+  /// the server revoked it.
+  [[nodiscard]] bool verify_control() noexcept;
+
   SharedRegion region_;
-  std::uint64_t beat_ = 0;
+  std::uint64_t beat_ = 0;         ///< heartbeat counter
+  std::uint64_t command_seq_ = 0;  ///< command sequence: separate, so gaps mean loss
   std::uint64_t token_ = 0;
   std::uint64_t last_server_beat_ = 0;
   bool holds_control_ = false;

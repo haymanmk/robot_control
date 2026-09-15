@@ -11,16 +11,13 @@ RegionError BridgeClient::attach(const std::string& name) {
 }
 
 bool BridgeClient::take_control() noexcept {
-  if (!region_.valid() || holds_control_) {
-    return holds_control_;
+  if (!region_.valid()) {
+    return false;
+  }
+  if (holds_control_ && verify_control()) {
+    return true;
   }
   BridgeHeader& h = region_.get()->header;
-
-  // Publish a heartbeat before claiming the token. The server samples the
-  // heartbeat on the first cycle it sees the token; if the token appeared first
-  // it could baseline against a previous client's stale value.
-  beat_ = h.client_heartbeat.load(std::memory_order_acquire) + 1;
-  h.client_heartbeat.store(beat_, std::memory_order_release);
 
   // The PID is the token: unique among live processes, and it identifies who
   // holds control in a crash dump.
@@ -28,11 +25,30 @@ bool BridgeClient::take_control() noexcept {
   std::uint64_t expected = 0;
   if (!h.control_token.compare_exchange_strong(expected, desired, std::memory_order_acq_rel,
                                                std::memory_order_acquire)) {
-    return false;  // someone else holds it
+    return false;  // someone else holds it -- and we must not touch the heartbeat
   }
   token_ = desired;
   holds_control_ = true;
+
+  // Only now, as the holder, prove liveness. A failed attempt above must leave
+  // no trace, or a client polling for control would keep a dead holder alive.
+  heartbeat();
   return true;
+}
+
+bool BridgeClient::verify_control() noexcept {
+  if (!region_.valid() || !holds_control_) {
+    return false;
+  }
+  const std::uint64_t live =
+      region_.get()->header.control_token.load(std::memory_order_acquire);
+  if (live != token_) {
+    // Revoked: the watchdog tripped while we were stalled and a successor may
+    // already be in charge. Stand down rather than command an arm we lost.
+    holds_control_ = false;
+    token_ = 0;
+  }
+  return holds_control_;
 }
 
 void BridgeClient::release_control() noexcept {
@@ -49,26 +65,25 @@ void BridgeClient::release_control() noexcept {
 }
 
 void BridgeClient::heartbeat() noexcept {
-  if (region_.valid()) {
-    region_.get()->header.client_heartbeat.store(++beat_, std::memory_order_release);
+  if (!verify_control()) {
+    return;
   }
+  region_.get()->header.client_heartbeat.store(++beat_, std::memory_order_release);
 }
 
 bool BridgeClient::send(CommandRecord& command) noexcept {
-  if (!region_.valid()) {
+  if (!verify_control()) {
     return false;
   }
-  // The client owns the sequence numbers, so the server can detect loss rather
-  // than infer it from silence.
-  command.sequence = ++beat_;
+  // Commands carry their own contiguous sequence so the server can detect loss
+  // by gaps; the heartbeat counter is a separate thing and advances on its own.
+  command.sequence = ++command_seq_;
   BridgeRegion& r = *region_.get();
   if (!r.commands.push(command)) {
     r.header.commands_rejected.fetch_add(1, std::memory_order_relaxed);
     return false;
   }
-  // Sending is itself proof of life; this keeps a busy client from having to
-  // remember a separate heartbeat call.
-  r.header.client_heartbeat.store(command.sequence, std::memory_order_release);
+  heartbeat();  // sending is itself proof of life
   return true;
 }
 

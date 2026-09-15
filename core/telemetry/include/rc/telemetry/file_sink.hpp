@@ -55,11 +55,16 @@ class FileSink {
   [[nodiscard]] bool running() const noexcept { return running_.load(std::memory_order_acquire); }
   [[nodiscard]] const std::string& bin_path() const noexcept { return bin_path_; }
 
-  /// Synchronous drain, for tests and for a final flush after the loop ends.
+  /// Synchronous drain, for tests and for a final flush after stop().
+  /// The telemetry ring is single-consumer: this refuses (returns 0) while the
+  /// background thread owns the ring, because two poppers on an SPSC ring
+  /// corrupt the head index. Call stop() first.
   std::size_t drain_once(rc::bridge::BridgeServer& server);
 
  private:
   void run(rc::bridge::BridgeServer& server, unsigned poll_interval_ms);
+  /// The actual drain, used by both entry points. No ownership check.
+  std::size_t drain_impl(rc::bridge::BridgeServer& server);
 
   std::FILE* file_ = nullptr;
   std::string bin_path_;
