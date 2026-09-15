@@ -56,7 +56,11 @@ std::int64_t LatencyHistogram::percentile_ns(double p) const noexcept {
   for (std::int64_t i = 0; i < n; ++i) {
     seen += buckets_[static_cast<std::size_t>(i)];
     if (seen >= target) {
-      return lo_ns_ + (i + 1) * span_ns_ / n;  // upper edge: report pessimistically
+      // Report the bucket's upper edge -- pessimistic, which is the right bias
+      // for a latency number you will have to defend. But clamp to the observed
+      // extremes: an instrument that reports p99.9 above max is not one anyone
+      // should trust, however defensible the arithmetic.
+      return std::clamp(lo_ns_ + (i + 1) * span_ns_ / n, min_, max_);
     }
   }
   return max_;
