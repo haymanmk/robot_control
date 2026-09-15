@@ -10,7 +10,7 @@
 /// month, at 3am, and takes a week to find.
 ///
 /// The deadline functions here take *absolute* times, not durations. See
-/// labs/01_loop_timing for the measurement of why that distinction is worth
+/// bench/loop_timing for the measurement of why that distinction is worth
 /// 188 ms of drift every 4 seconds.
 
 #include <chrono>

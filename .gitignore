@@ -1,2 +1,5 @@
 build/
 compile_commands.json
+*.ipynb
+.ipynb_checkpoints/
+__pycache__/

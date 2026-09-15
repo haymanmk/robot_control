@@ -8,8 +8,8 @@
 /// fix the rest -- no GC, no GIL, no surprise allocation -- not an automatic win.)
 ///
 /// Build:  cmake -B build && cmake --build build -j
-/// Run:    ./build/labs/01_loop_timing/cpp/lab01_loop_timing
-///         sudo ./build/labs/01_loop_timing/cpp/lab01_loop_timing --rt 80 --cpu 3
+/// Run:    ./build/bench/loop_timing/bench_loop_timing
+///         sudo ./build/bench/loop_timing/bench_loop_timing --rt 80 --cpu 3
 
 #include <cstdio>
 #include <cstdlib>

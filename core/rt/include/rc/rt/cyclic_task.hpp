@@ -15,7 +15,7 @@
 /// whole trick. A late wake-up shortens the *next* sleep instead of pushing the
 /// schedule back, so error is corrected every cycle instead of accumulating.
 /// The vendor's `sleep(dt - elapsed)` does the opposite and loses 4.7% of
-/// wall-clock time permanently (labs/01_loop_timing).
+/// wall-clock time permanently (bench/loop_timing).
 ///
 /// Four different numbers get confused with each other constantly, so this
 /// class measures all four separately:

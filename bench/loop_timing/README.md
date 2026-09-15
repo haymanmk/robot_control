@@ -1,4 +1,6 @@
-# Lab 01 — Control loop timing
+# loop_timing — Tier 1 determinism benchmark
+
+*(Lab 01 in [the roadmap](../../docs/ROADMAP.md).)*
 
 **Question:** The reBot vendor stack runs its 500 Hz loop with
 `time.sleep(dt - elapsed)`. How wrong is that, in microseconds?
@@ -124,8 +126,8 @@ number that tells them apart.
 
 ```bash
 cmake -B build && cmake --build build -j
-./build/labs/01_loop_timing/cpp/lab01_loop_timing --seconds 10
-sudo ./build/labs/01_loop_timing/cpp/lab01_loop_timing --rt 80 --cpu 3
+./build/bench/loop_timing/bench_loop_timing --seconds 10
+sudo ./build/bench/loop_timing/bench_loop_timing --rt 80 --cpu 3
 ```
 
 Same machine, same run length, both languages:

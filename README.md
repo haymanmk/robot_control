@@ -23,7 +23,7 @@ path ourselves:
 
 ```bash
 cmake -B build && cmake --build build -j
-./build/labs/01_loop_timing/cpp/lab01_loop_timing --seconds 10
+./build/bench/loop_timing/bench_loop_timing --seconds 10
 ```
 
 C++20, plain CMake, no dependencies beyond libc. The control core deliberately
@@ -32,7 +32,8 @@ does not require ROS to build, test, or measure — see [ADR-0003](docs/adr/0003
 ## Where to start
 
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — the milestone sequence and what each one teaches
-- [`labs/`](labs/) — runnable experiments; **[Lab 01](labs/01_loop_timing/) needs no hardware**
+- [`bench/`](bench/) — the performance regression suite; **[loop_timing](bench/loop_timing/) needs no hardware**
+- [`notebooks/`](notebooks/) — analysis and write-ups, as plain `.py`
 - [`docs/adr/`](docs/adr/) — architecture decisions and why they were made
 
 ## Decisions so far
@@ -41,4 +42,6 @@ does not require ROS to build, test, or measure — see [ADR-0003](docs/adr/0003
 |---|---|
 | [0001](docs/adr/0001-rtos-and-middleware-selection.md) | Three-tier architecture: hard-RT core / lock-free bridge / ROS2 + UI. Prototype on PREEMPT_RT before considering Xenomai. |
 | [0002](docs/adr/0002-target-platform-rebot-b601-rs.md) | Target is B601-RS over SocketCAN. Xenomai closed for this robot: our loop is an outer setpoint loop, and CAN bus load — not kernel latency — is the binding constraint. |
+| [0005](docs/adr/0005-safe-state-and-stop-architecture.md) | No brakes, so there is no unpowered safe state. Default fault response is IEC 60204-1 **Category 2**: decelerate, then hold *powered* at low stiffness with gravity feedforward. Return-to-home is operator-initiated recovery, never a fault response. |
+| [0004](docs/adr/0004-system-decomposition.md) | Standalone C++ `core/` (no ROS, no Python), pybind11 bindings that can only *command and observe*, ROS2 last. Telemetry is always-on and part of the product, with a four-tier measurement taxonomy. |
 | [0003](docs/adr/0003-cpp-control-core-and-layering.md) | C++20 control core with a plain-CMake build, layered `rt → can → drive → model → control`. Chosen for control over the cyclic path, not for speed — Lab 01 shows C++ and Python hit a 2 ms deadline equally well. |

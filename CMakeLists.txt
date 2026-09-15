@@ -16,4 +16,4 @@ endif()
 add_compile_options(-Wall -Wextra -Wpedantic -Wshadow -Wconversion)
 
 add_subdirectory(core/rt)
-add_subdirectory(labs/01_loop_timing/cpp)
+add_subdirectory(bench/loop_timing)

@@ -11,16 +11,23 @@ Reference baseline: [`Seeed-Projects/reBotArm_control_py`](https://github.com/Se
 
 ---
 
+**Where a lab's artifacts live:** a lab is a pedagogical unit, not a directory.
+It produces a regression benchmark in `bench/`, an analysis write-up in
+`notebooks/`, and code in `core/` — see [ADR-0004](adr/0004-system-decomposition.md).
+
 Implementation language is **C++20** for everything cyclic; see
 [ADR-0003](adr/0003-cpp-control-core-and-layering.md) for the layering and the
 rules the cyclic path lives by. `core/rt` — the clock, the cyclic executive, RT
 privileges, and allocation-free instrumentation — is written and is what Lab 01
 demonstrates.
 
-## Phase 0 — Timing and the bus (no robot needed for 01)
+## Phase 0 — Timing, the bus, and what the drives do when you die
+
+> ⛔ **Lab 00 is blocking.** Nothing moves under its own power until it is done.
 
 | Lab | Question it answers | Fundamentals it forces you to learn |
 |---|---|---|
+| **00 — drive comms loss** ⛔ | When command frames stop arriving, does a RobStride drive hold its last setpoint or disable? | Fail-safe vs fail-operational, why a brakeless arm has no unpowered safe state, dependency ranking of stop paths ([ADR-0005](adr/0005-safe-state-and-stop-architecture.md)) |
 | **01 — loop timing** ✅ | How wrong is `time.sleep(dt - elapsed)`, in microseconds? | Monotonic vs wall clocks, absolute vs relative deadlines, phase-locked loops, drift vs jitter, percentiles over averages, `SCHED_FIFO`, `mlockall`, why the GIL is not your main problem here |
 | 02 — the CAN bus | What is actually on the wire at 500 Hz? | CAN framing, arbitration, bit stuffing, bus load, SocketCAN, `candump`/`cangen`, why bus utilisation — not the kernel — sets worst-case latency |
 | 03 — round-trip latency | Command frame out → feedback frame back, distribution? | Dead time in a control loop, its effect on achievable gains, joint-to-joint skew without a distributed clock |
@@ -33,7 +40,7 @@ from *measured* numbers.
 | Lab | Question | Fundamentals |
 |---|---|---|
 | 04 — one joint, open loop | Can I command J6 to a position and read it back? | RobStride protocol, MIT mode's `(pos, vel, kp, kd, tau)`, what "impedance control" means physically, enable/disable/zeroing, units and sign conventions |
-| 05 — the watchdog | What happens when my process is `SIGSTOP`ped mid-motion? | Fail-safe vs fail-operational, heartbeat design, why a robot must assume its controller will die |
+| 05 — stop categories | Does the Category 2 ramp bound the extra travel, and can a human still push the arm aside while it holds? | IEC 60204-1 stop categories, compliant vs rigid hold, allocation-free gravity feedforward in the cyclic path, why return-to-home is recovery and never a fault response |
 | 06 — joint velocity | The drive lies about `mechVel`. Now what? | Finite differencing, quantisation noise, low-pass and Savitzky-Golay filters, phase lag vs noise trade-off, why this is state estimation |
 
 ## Phase 2 — Make it a manipulator
@@ -58,7 +65,8 @@ from *measured* numbers.
 | Lab | Question | Fundamentals |
 |---|---|---|
 | 14 — the RT/non-RT split | How do setpoints cross from planning to the 500 Hz loop? | Lock-free SPSC ring buffers, memory ordering, why allocation and logging are banned in the cyclic path, ADR-0001's bridge spec made real |
-| 15 — PREEMPT_RT for real | Does the budget hold under load? | `cyclictest`, `isolcpus`/`nohz_full`/`rcu_nocbs`, IRQ affinity, priority inversion, ftrace |
+| 15 — PREEMPT_RT, *if needed* | Does the budget hold under load on the stock kernel — and if not, does PREEMPT_RT close the gap? | `cyclictest`, `isolcpus`/`nohz_full`/`rcu_nocbs`, IRQ affinity, priority inversion, ftrace. Note the order: measure the stock kernel **first**. A 2 ms outer loop with `SCHED_FIFO` and CPU isolation may already pass, and ADR-0001's own principle says do not adopt a kernel you have not proven you need. |
+| 18 — repeatability, ISO 9283 | Is the ±0.1 mm claim true? | Pose repeatability vs accuracy, why the encoders cannot validate the encoders, dial-indicator procedure, sample size and confidence |
 | 16 — ROS2 tier | MoveIt2, state publishing, Foxglove | `ros2_control` architecture, DDS, lifecycle nodes, and where the real-time boundary must sit |
 | 17 — simulation parity | Same controller in sim and on hardware | MuJoCo/Gazebo, sim-to-real gap, what the URDF's collision meshes are for |
 
