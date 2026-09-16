@@ -37,6 +37,8 @@ class BridgeClient {
   BridgeClient(const BridgeClient&) = delete;
   BridgeClient& operator=(const BridgeClient&) = delete;
 
+  /// Map the RT core's region for reading. Does not arm the watchdog; a
+  /// monitoring client stops here.
   [[nodiscard]] RegionError attach(const std::string& name = kDefaultRegionName);
 
   /// Take responsibility for commanding the arm. Arms the RT-side watchdog.
@@ -67,14 +69,19 @@ class BridgeClient {
   /// @return false only if a burst of writes prevented a clean read.
   [[nodiscard]] bool state(rc::telemetry::StateSnapshot& out) const noexcept;
 
+  /// The RT core's own view of its state. Pair with server_alive() to tell
+  /// "idle" from "dead".
   [[nodiscard]] ServerState server_state() const noexcept;
 
   /// Has the RT core advanced since the last call? Distinguishes "idle" from
   /// "dead", which the state enum alone cannot.
   [[nodiscard]] bool server_alive() noexcept;
 
+  /// The RT loop's nominal period, from the region header.
   [[nodiscard]] std::uint32_t control_period_ns() const noexcept;
+  /// Telemetry records the RT side dropped because the ring was full.
   [[nodiscard]] std::uint64_t telemetry_dropped() const noexcept;
+  /// True after a successful attach().
   [[nodiscard]] bool attached() const noexcept { return region_.valid(); }
 
   /// Live check against the shared token, so a revocation by the server is

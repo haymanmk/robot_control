@@ -53,6 +53,7 @@ struct RtStatus {
 
   /// True only if every requested step succeeded.
   [[nodiscard]] bool fully_applied(const RtOptions& opts) const noexcept;
+  /// The notes, one per line, indented to line up with CyclicReport::format().
   [[nodiscard]] std::string format() const;
 };
 

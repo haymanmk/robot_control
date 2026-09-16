@@ -62,8 +62,8 @@ class SpscRing {
                 "capacity must be a power of two so that masking replaces modulo");
 
  public:
-  using value_type = T;
-  static constexpr std::size_t capacity = Capacity;
+  using value_type = T;                             ///< element type
+  static constexpr std::size_t capacity = Capacity;  ///< slots; the ring holds at most this many
 
   /// Producer side. Returns false if the ring is full; the caller decides the
   /// policy. The cyclic path must never retry in a loop -- it drops, counts,
@@ -100,6 +100,7 @@ class SpscRing {
     return static_cast<std::size_t>(tail - head);
   }
 
+  /// size_approx() == 0, with the same caveat.
   [[nodiscard]] bool empty_approx() const noexcept { return size_approx() == 0; }
 
   /// Total items ever published / consumed. Useful for detecting a stalled
@@ -107,6 +108,7 @@ class SpscRing {
   [[nodiscard]] std::uint64_t produced() const noexcept {
     return tail_.load(std::memory_order_acquire);
   }
+  /// @copydoc produced()
   [[nodiscard]] std::uint64_t consumed() const noexcept {
     return head_.load(std::memory_order_acquire);
   }

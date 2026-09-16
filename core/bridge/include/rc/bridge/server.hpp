@@ -69,7 +69,9 @@ class BridgeServer {
   /// True once a client has taken control and has not been lost.
   [[nodiscard]] bool client_in_control() const noexcept;
 
+  /// Publish the server's state for clients to read.
   void set_state(ServerState state) noexcept;
+  /// The state most recently published with set_state().
   [[nodiscard]] ServerState state() const noexcept;
 
   // ── non-cyclic ────────────────────────────────────────────────────────────
@@ -78,8 +80,11 @@ class BridgeServer {
   /// @return number of records written into @p out.
   [[nodiscard]] std::size_t drain(rc::telemetry::TelemetryRecord* out, std::size_t max) noexcept;
 
+  /// Records publish() dropped because the telemetry ring was full.
   [[nodiscard]] std::uint64_t telemetry_dropped() const noexcept;
+  /// Times the client watchdog fired since open().
   [[nodiscard]] std::uint64_t watchdog_trips() const noexcept;
+  /// True between a successful open() and close().
   [[nodiscard]] bool valid() const noexcept { return region_.valid(); }
 
   /// Mark shutdown and remove the region name.

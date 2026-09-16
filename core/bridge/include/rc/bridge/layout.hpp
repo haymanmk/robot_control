@@ -40,6 +40,7 @@ inline constexpr std::size_t kTelemetryCapacity = 4096;
 /// outstanding, the client is misusing the interface and should be told.
 inline constexpr std::size_t kCommandCapacity = 256;
 
+/// What a CommandRecord asks the RT core to do.
 enum class CommandType : std::uint32_t {
   kNone = 0,
   kEnable = 1,
@@ -128,10 +129,10 @@ struct BridgeHeader {
 /// The whole region. Placement-new'd by the server into the mapping; clients
 /// reinterpret the same bytes.
 struct BridgeRegion {
-  BridgeHeader header;
-  rc::rt::Seqlock<rc::telemetry::StateSnapshot> snapshot;
-  rc::rt::SpscRing<rc::telemetry::TelemetryRecord, kTelemetryCapacity> telemetry;
-  rc::rt::SpscRing<CommandRecord, kCommandCapacity> commands;
+  BridgeHeader header;  ///< identity, liveness and counters
+  rc::rt::Seqlock<rc::telemetry::StateSnapshot> snapshot;  ///< newest state, RT writes, clients read
+  rc::rt::SpscRing<rc::telemetry::TelemetryRecord, kTelemetryCapacity> telemetry;  ///< RT -> drain thread
+  rc::rt::SpscRing<CommandRecord, kCommandCapacity> commands;  ///< controlling client -> RT
 };
 
 /// Default name; the leading slash is required by shm_open(3).

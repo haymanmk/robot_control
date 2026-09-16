@@ -29,13 +29,13 @@ struct Provenance {
   std::string build_time;    ///< when the binary was built
 
   // Kernel and machine
-  std::string hostname;
+  std::string hostname;        ///< uname -n
   std::string kernel_release;  ///< uname -r
   std::string kernel_version;  ///< uname -v
   std::string preempt_model;  ///< "PREEMPT_RT", "PREEMPT_DYNAMIC", "none", ...
   bool realtime_kernel = false;  ///< /sys/kernel/realtime says so, or preempt_model is PREEMPT_RT
-  std::string cpu_model;
-  unsigned cpu_count = 0;
+  std::string cpu_model;      ///< from /proc/cpuinfo
+  unsigned cpu_count = 0;     ///< online CPUs
   std::string cpu_governor;   ///< cpufreq governor; anything but "performance" adds jitter
   std::string isolated_cpus;  ///< /sys/devices/system/cpu/isolated
   std::string nohz_full;      ///< /sys/devices/system/cpu/nohz_full

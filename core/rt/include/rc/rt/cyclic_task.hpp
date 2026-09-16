@@ -79,7 +79,9 @@ struct CyclicReport {
   /// How long body() ran: your fault.
   LatencyHistogram exec_time;
 
+  /// Sizes the three histograms to @p span; @p period_ns is recorded as-is.
   CyclicReport(Nanos span, Nanos period_ns);
+  /// Multi-line human-readable summary: counts, drift, and one row per histogram.
   [[nodiscard]] std::string format() const;
 };
 
@@ -94,6 +96,7 @@ class CyclicTask {
   /// hard about what a 200 us jitter spike does to your derivative term.
   using Body = std::function<void(std::uint64_t cycle, Nanos dt)>;
 
+  /// Stores the config. Nothing runs and no RT option is applied until run().
   explicit CyclicTask(CyclicConfig cfg);
 
   /// Applies RT options, then runs exactly @p cycles iterations in the calling

@@ -52,10 +52,13 @@ class FileSink {
   /// Stops the thread and flushes. Safe to call twice.
   void stop();
 
+  /// Records written to the .bin file so far.
   [[nodiscard]] std::uint64_t records_written() const noexcept {
     return written_.load(std::memory_order_relaxed);
   }
+  /// True while the drain thread started by start() is alive.
   [[nodiscard]] bool running() const noexcept { return running_.load(std::memory_order_acquire); }
+  /// Path of the .bin file opened by open().
   [[nodiscard]] const std::string& bin_path() const noexcept { return bin_path_; }
 
   /// Synchronous drain, for tests and for a final flush after stop().
