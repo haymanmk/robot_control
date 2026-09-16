@@ -62,6 +62,10 @@
 
 namespace rc::rt {
 
+/// Single-writer / many-reader snapshot of one trivially copyable value. The
+/// writer is wait-free and never blocks on readers; a reader retries if it
+/// observed a write in progress. Use it for "what is the arm doing right
+/// now", not for a stream of records (that is SpscRing).
 template <typename T>
 class Seqlock {
   static_assert(std::is_trivially_copyable_v<T>,

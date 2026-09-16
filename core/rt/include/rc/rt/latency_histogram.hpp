@@ -23,6 +23,10 @@
 
 namespace rc::rt {
 
+/// Allocation-free distribution recorder for the cyclic path. Buckets are
+/// allocated once at construction, record() is O(1) and lock-free, and
+/// percentiles are reconstructed from the buckets afterwards. min and max are
+/// tracked exactly; percentiles have bucket resolution.
 class LatencyHistogram {
  public:
   /// Linear buckets spanning [lo_ns, hi_ns]. Samples outside that range land in

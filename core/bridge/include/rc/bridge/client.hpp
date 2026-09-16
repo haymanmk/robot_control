@@ -27,6 +27,9 @@
 
 namespace rc::bridge {
 
+/// The client end of the bridge. Attaches to the RT core's shared region to
+/// read state and telemetry; optionally takes control to send commands, at
+/// which point it must heartbeat() or the RT-side watchdog stops the arm.
 class BridgeClient {
  public:
   BridgeClient() = default;

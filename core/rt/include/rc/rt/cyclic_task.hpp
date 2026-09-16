@@ -39,8 +39,12 @@
 
 namespace rc::rt {
 
+/// Everything CyclicTask needs to know before it starts: the period, the
+/// real-time options to apply, and the thresholds for counting and measuring.
 struct CyclicConfig {
-  Nanos period{std::chrono::milliseconds(2)};  // 500 Hz: the B601-RS nominal
+  /// Nominal cycle period. 2 ms is 500 Hz, the B601-RS nominal.
+  Nanos period{std::chrono::milliseconds(2)};
+  /// Scheduler, memory-lock and affinity settings applied at run() start.
   RtOptions rt{};
   /// A cycle whose period error exceeds this counts as an overrun.
   /// Zero means "10% of the period".
@@ -50,7 +54,11 @@ struct CyclicConfig {
   Nanos histogram_span{std::chrono::milliseconds(2)};
 };
 
+/// What a run produced: cycle counts, the three latency histograms, and the
+/// long-run drift. Each number answers a different question; see the file
+/// comment for which one is whose fault.
 struct CyclicReport {
+  /// Cycles completed.
   std::uint64_t cycles = 0;
   /// Cycles whose period error exceeded the overrun threshold.
   std::uint64_t overruns = 0;
@@ -59,17 +67,26 @@ struct CyclicReport {
   std::uint64_t missed_deadlines = 0;
   /// End-to-end schedule error: where we finished versus where we should have.
   Nanos drift{Nanos::zero()};
+  /// Nominal period the run was configured with.
   Nanos period{Nanos::zero()};
+  /// Which real-time setup steps were actually granted.
   RtStatus rt_status{};
 
+  /// wake - deadline: the scheduler's fault.
   LatencyHistogram wake_latency;
+  /// wake[n] - wake[n-1] - T: what the motors actually see.
   LatencyHistogram period_error;
+  /// How long body() ran: your fault.
   LatencyHistogram exec_time;
 
   CyclicReport(Nanos span, Nanos period_ns);
   [[nodiscard]] std::string format() const;
 };
 
+/// Phase-locked cyclic executive. Sleeps to deadlines computed from a fixed
+/// origin, so a late wake-up shortens the next sleep instead of shifting the
+/// schedule, and measures wake latency, period error, execution time and
+/// drift separately.
 class CyclicTask {
  public:
   /// Cycle body. Receives the cycle index and the nominal period -- use the

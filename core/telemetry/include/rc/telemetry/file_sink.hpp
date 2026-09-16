@@ -31,6 +31,9 @@ class BridgeServer;
 
 namespace rc::telemetry {
 
+/// Drains telemetry from a BridgeServer to a binary file on a non-RT thread.
+/// Writes a JSON sidecar with the Provenance and the numpy dtype so a run is
+/// reproducible and loadable without this code.
 class FileSink {
  public:
   FileSink() = default;

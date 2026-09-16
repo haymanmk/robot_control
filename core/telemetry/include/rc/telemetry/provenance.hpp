@@ -17,25 +17,28 @@
 
 namespace rc::telemetry {
 
+/// Everything about the build, machine and kernel that can change a timing
+/// result. Recorded with every run so a number can be reproduced, or
+/// explained when it cannot be.
 struct Provenance {
   // Build
-  std::string git_sha;
+  std::string git_sha;       ///< commit the binary was built from
   std::string git_dirty;     ///< "clean" or "dirty" — a dirty build is not reproducible
-  std::string build_type;
-  std::string compiler;
-  std::string build_time;
+  std::string build_type;    ///< CMAKE_BUILD_TYPE, e.g. "Release"
+  std::string compiler;      ///< compiler id and version
+  std::string build_time;    ///< when the binary was built
 
   // Kernel and machine
   std::string hostname;
-  std::string kernel_release;
-  std::string kernel_version;
+  std::string kernel_release;  ///< uname -r
+  std::string kernel_version;  ///< uname -v
   std::string preempt_model;  ///< "PREEMPT_RT", "PREEMPT_DYNAMIC", "none", ...
-  bool realtime_kernel = false;
+  bool realtime_kernel = false;  ///< /sys/kernel/realtime says so, or preempt_model is PREEMPT_RT
   std::string cpu_model;
   unsigned cpu_count = 0;
-  std::string cpu_governor;
+  std::string cpu_governor;   ///< cpufreq governor; anything but "performance" adds jitter
   std::string isolated_cpus;  ///< /sys/devices/system/cpu/isolated
-  std::string nohz_full;
+  std::string nohz_full;      ///< /sys/devices/system/cpu/nohz_full
 
   // GPU (ADR-0007: the driver is mandatory and it is a latency source)
   std::string nvidia_driver;  ///< empty if not present
@@ -44,9 +47,9 @@ struct Provenance {
   // Run
   std::string wall_clock;     ///< ISO-8601 UTC, for correlating with external logs
   std::string rt_notes;       ///< what apply_realtime() actually granted
-  std::string can_interface;
-  unsigned can_bitrate = 0;
-  double control_rate_hz = 0.0;
+  std::string can_interface;  ///< e.g. "can0"; empty if the run did not use the bus
+  unsigned can_bitrate = 0;   ///< bit/s
+  double control_rate_hz = 0.0;  ///< nominal loop rate
   std::string label;          ///< free-text: what this run was testing
 
   /// Collect everything discoverable. Does file I/O — never call from the

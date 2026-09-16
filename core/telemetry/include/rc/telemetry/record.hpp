@@ -64,17 +64,17 @@ struct TelemetryRecord {
   std::int64_t can_tx_ns;     ///< first command frame handed to the driver
   std::int64_t can_rx_ns;     ///< newest feedback frame, KERNEL timestamp
 
-  std::uint32_t joint_count;
+  std::uint32_t joint_count;  ///< how many of the per-joint arrays are meaningful
   std::uint32_t flags;        ///< bitwise OR of RecordFlag
   std::uint32_t fault_mask;   ///< bit per joint: drive reported a fault
   std::uint32_t mode;         ///< ControlMode
 
-  float cmd_pos[kMaxJoints];
-  float cmd_vel[kMaxJoints];
-  float cmd_tau[kMaxJoints];
-  float meas_pos[kMaxJoints];
-  float meas_vel[kMaxJoints];
-  float meas_tau[kMaxJoints];
+  float cmd_pos[kMaxJoints];  ///< commanded position, rad
+  float cmd_vel[kMaxJoints];  ///< commanded velocity, rad/s
+  float cmd_tau[kMaxJoints];  ///< commanded torque, N m
+  float meas_pos[kMaxJoints]; ///< measured position, rad
+  float meas_vel[kMaxJoints]; ///< measured velocity, rad/s
+  float meas_tau[kMaxJoints]; ///< measured torque, N m
 };
 
 static_assert(sizeof(TelemetryRecord) == 256,
@@ -85,15 +85,15 @@ static_assert(sizeof(TelemetryRecord) == 256,
 /// publisher. Deliberately smaller than TelemetryRecord — a viewer wants
 /// position and health, not CAN timestamps.
 struct StateSnapshot {
-  std::uint64_t cycle;
-  std::int64_t wake_ns;
-  std::uint32_t joint_count;
-  std::uint32_t flags;
-  std::uint32_t fault_mask;
-  std::uint32_t mode;
-  float pos[kMaxJoints];
-  float vel[kMaxJoints];
-  float tau[kMaxJoints];
+  std::uint64_t cycle;        ///< cycle this snapshot was taken in
+  std::int64_t wake_ns;       ///< CLOCK_MONOTONIC when that cycle woke
+  std::uint32_t joint_count;  ///< how many of the per-joint arrays are meaningful
+  std::uint32_t flags;        ///< bitwise OR of RecordFlag
+  std::uint32_t fault_mask;   ///< bit per joint: drive reported a fault
+  std::uint32_t mode;         ///< ControlMode
+  float pos[kMaxJoints];      ///< measured position, rad
+  float vel[kMaxJoints];      ///< measured velocity, rad/s
+  float tau[kMaxJoints];      ///< measured torque, N m
 };
 
 }  // namespace rc::telemetry

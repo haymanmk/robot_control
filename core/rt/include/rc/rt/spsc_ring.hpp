@@ -49,6 +49,9 @@ namespace rc::rt {
 /// ping-pong and can cost an order of magnitude.
 inline constexpr std::size_t kCacheLine = 64;
 
+/// Single-producer / single-consumer bounded queue. Wait-free on both sides,
+/// allocation-free, and free of pointers so it works in shared memory mapped
+/// at different addresses. push() drops when full rather than blocking.
 template <typename T, std::size_t Capacity>
 class SpscRing {
   static_assert(std::is_trivially_copyable_v<T>,

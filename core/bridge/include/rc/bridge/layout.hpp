@@ -58,14 +58,14 @@ struct CommandRecord {
   std::uint64_t sequence;     ///< client-assigned, strictly increasing; gaps mean loss
   std::int64_t issued_ns;     ///< CLOCK_MONOTONIC at the client
   std::uint32_t type;         ///< CommandType
-  std::uint32_t joint_count;
+  std::uint32_t joint_count;  ///< how many of the per-joint arrays are meaningful
   std::uint32_t mode;         ///< telemetry::ControlMode, for kSetMode
-  std::uint32_t flags;
-  float pos[rc::telemetry::kMaxJoints];
-  float vel[rc::telemetry::kMaxJoints];
-  float tau[rc::telemetry::kMaxJoints];
-  float kp[rc::telemetry::kMaxJoints];
-  float kd[rc::telemetry::kMaxJoints];
+  std::uint32_t flags;        ///< reserved; unused, set to zero
+  float pos[rc::telemetry::kMaxJoints];  ///< target position per joint, rad
+  float vel[rc::telemetry::kMaxJoints];  ///< target velocity per joint, rad/s
+  float tau[rc::telemetry::kMaxJoints];  ///< feed-forward torque per joint, N m
+  float kp[rc::telemetry::kMaxJoints];   ///< position gain per joint (MIT mode)
+  float kd[rc::telemetry::kMaxJoints];   ///< velocity gain per joint (MIT mode)
 };
 
 static_assert(sizeof(CommandRecord) == 192, "layout change requires a kLayoutVersion bump");
@@ -89,17 +89,17 @@ enum class ServerState : std::uint32_t {
 /// shm_open() returns, and without this a client attaching a few hundred
 /// microseconds early would read a zero period or a half-written header.
 struct BridgeHeader {
-  std::atomic<std::uint64_t> magic;
-  std::uint32_t layout_version;
-  std::uint32_t header_size;
-  std::uint32_t telemetry_record_size;
-  std::uint32_t command_record_size;
-  std::uint32_t snapshot_size;
-  std::uint32_t telemetry_capacity;
-  std::uint32_t command_capacity;
-  std::uint32_t control_period_ns;
-  std::int64_t server_start_ns;
-  std::uint64_t server_pid;
+  std::atomic<std::uint64_t> magic;      ///< kMagic once the server has finished initialising
+  std::uint32_t layout_version;          ///< kLayoutVersion of the server that created the region
+  std::uint32_t header_size;             ///< sizeof(BridgeHeader); a client checks all sizes before use
+  std::uint32_t telemetry_record_size;   ///< sizeof(TelemetryRecord)
+  std::uint32_t command_record_size;     ///< sizeof(CommandRecord)
+  std::uint32_t snapshot_size;           ///< sizeof(StateSnapshot)
+  std::uint32_t telemetry_capacity;      ///< kTelemetryCapacity
+  std::uint32_t command_capacity;        ///< kCommandCapacity
+  std::uint32_t control_period_ns;       ///< the RT loop's nominal period
+  std::int64_t server_start_ns;          ///< CLOCK_MONOTONIC when the server opened the region
+  std::uint64_t server_pid;              ///< for diagnostics only; never used for liveness
 
   /// Client liveness. A **counter**, not a timestamp: two processes need not
   /// agree on a clock for a counter to prove progress, and a frozen client that
@@ -115,14 +115,14 @@ struct BridgeHeader {
   /// never arrived.
   alignas(rc::rt::kCacheLine) std::atomic<std::uint64_t> control_token;
 
-  alignas(rc::rt::kCacheLine) std::atomic<std::uint32_t> server_state;
-  std::atomic<std::uint32_t> watchdog_timeout_cycles;
+  alignas(rc::rt::kCacheLine) std::atomic<std::uint32_t> server_state;  ///< ServerState
+  std::atomic<std::uint32_t> watchdog_timeout_cycles;  ///< cycles without client progress before a trip
 
   /// Counters the RT side owns. Published so a client can see loss without
   /// inferring it.
   alignas(rc::rt::kCacheLine) std::atomic<std::uint64_t> telemetry_dropped;
-  std::atomic<std::uint64_t> commands_rejected;
-  std::atomic<std::uint64_t> watchdog_trips;
+  std::atomic<std::uint64_t> commands_rejected;  ///< commands dropped because the command ring was full
+  std::atomic<std::uint64_t> watchdog_trips;     ///< times the client watchdog fired
 };
 
 /// The whole region. Placement-new'd by the server into the mapping; clients

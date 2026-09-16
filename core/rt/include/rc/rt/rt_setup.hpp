@@ -24,20 +24,31 @@
 
 namespace rc::rt {
 
+/// What to request from the kernel: scheduling class, memory locking, CPU
+/// affinity and pre-faulting. Each can be refused; see RtStatus.
 struct RtOptions {
   /// SCHED_FIFO priority, 1..99. 0 means "leave the scheduling class alone".
   /// Stay below the kernel's own threads (typically 50) unless you know why.
   int priority = 0;
+  /// mlockall() the whole address space so the cyclic path never page-faults.
   bool lock_memory = true;
   /// CPU to pin to; -1 means no affinity change.
   int cpu = -1;
+  /// Stack bytes to touch up front so the first write in the loop does not fault.
   std::size_t prefault_bytes = 512 * 1024;
 };
 
+/// Which of the requested real-time steps were actually granted. A process
+/// that silently runs without them produces timing numbers you will wrongly
+/// believe, so always read this.
 struct RtStatus {
+  /// SCHED_FIFO was applied at the requested priority.
   bool scheduler_applied = false;
+  /// mlockall() succeeded.
   bool memory_locked = false;
+  /// The thread is pinned to the requested CPU.
   bool affinity_applied = false;
+  /// Human-readable detail on every step, including why one was refused.
   std::vector<std::string> notes;
 
   /// True only if every requested step succeeded.

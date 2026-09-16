@@ -18,6 +18,9 @@
 
 namespace rc::bridge {
 
+/// The RT core's end of the bridge. Owns the shared region, publishes
+/// telemetry and state snapshots, polls commands, and runs the client
+/// watchdog. Methods in the "cyclic" section are safe inside the 500 Hz loop.
 class BridgeServer {
  public:
   BridgeServer() = default;
