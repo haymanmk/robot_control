@@ -63,6 +63,7 @@ real-time code.
 - [`notebooks/`](notebooks/) — analysis and write-ups, kept as plain `.py` files
 - `tools/telemetry_dump.py` — reads a telemetry run with nothing installed
 - [`docs/rt-setup.md`](docs/rt-setup.md) — locked memory and real-time priority limits: examine, then raise
+- [`docs/debugging.md`](docs/debugging.md) — getting source lines in gdb, for our code and for libc
 - [`docs/adr/`](docs/adr/) — the design decisions and the reasons behind them
 
 ## Decisions so far
