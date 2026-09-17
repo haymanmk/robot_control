@@ -49,6 +49,9 @@ namespace rc::rt {
 /// ping-pong and can cost an order of magnitude.
 inline constexpr std::size_t kCacheLine = 64;
 
+/// Single-producer / single-consumer bounded queue. Wait-free on both sides,
+/// allocation-free, and free of pointers so it works in shared memory mapped
+/// at different addresses. push() drops when full rather than blocking.
 template <typename T, std::size_t Capacity>
 class SpscRing {
   static_assert(std::is_trivially_copyable_v<T>,
@@ -59,8 +62,8 @@ class SpscRing {
                 "capacity must be a power of two so that masking replaces modulo");
 
  public:
-  using value_type = T;
-  static constexpr std::size_t capacity = Capacity;
+  using value_type = T;                             ///< element type
+  static constexpr std::size_t capacity = Capacity;  ///< slots; the ring holds at most this many
 
   /// Producer side. Returns false if the ring is full; the caller decides the
   /// policy. The cyclic path must never retry in a loop -- it drops, counts,
@@ -97,6 +100,7 @@ class SpscRing {
     return static_cast<std::size_t>(tail - head);
   }
 
+  /// size_approx() == 0, with the same caveat.
   [[nodiscard]] bool empty_approx() const noexcept { return size_approx() == 0; }
 
   /// Total items ever published / consumed. Useful for detecting a stalled
@@ -104,6 +108,7 @@ class SpscRing {
   [[nodiscard]] std::uint64_t produced() const noexcept {
     return tail_.load(std::memory_order_acquire);
   }
+  /// @copydoc produced()
   [[nodiscard]] std::uint64_t consumed() const noexcept {
     return head_.load(std::memory_order_acquire);
   }

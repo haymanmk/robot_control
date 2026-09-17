@@ -16,6 +16,7 @@
 
 namespace rc::bridge {
 
+/// Why create() or attach() failed. kOk is success.
 enum class RegionError {
   kOk = 0,
   kShmOpenFailed,
@@ -29,6 +30,7 @@ enum class RegionError {
   kMlockFailed,
 };
 
+/// Short human-readable name for a RegionError, for logs.
 [[nodiscard]] const char* to_string(RegionError e) noexcept;
 
 /// RAII wrapper over one mapping. Move-only.
@@ -38,7 +40,9 @@ class SharedRegion {
   ~SharedRegion();
   SharedRegion(const SharedRegion&) = delete;
   SharedRegion& operator=(const SharedRegion&) = delete;
+  /// Transfers the mapping; @p other is left invalid.
   SharedRegion(SharedRegion&& other) noexcept;
+  /// Closes this mapping, then takes over @p other's.
   SharedRegion& operator=(SharedRegion&& other) noexcept;
 
   /// Server side: create (or replace) the region and construct the rings in it.
@@ -60,10 +64,15 @@ class SharedRegion {
   /// valid until unmapped, exactly like unlink(2) on a file.
   static void unlink(const std::string& name) noexcept;
 
+  /// True if a region is mapped.
   [[nodiscard]] bool valid() const noexcept { return region_ != nullptr; }
+  /// The mapped region, or nullptr if not valid().
   [[nodiscard]] BridgeRegion* get() noexcept { return region_; }
+  /// @copydoc get()
   [[nodiscard]] const BridgeRegion* get() const noexcept { return region_; }
+  /// The shm name this was created with or attached to.
   [[nodiscard]] const std::string& name() const noexcept { return name_; }
+  /// True if this object created the region and will unlink it on close.
   [[nodiscard]] bool owns() const noexcept { return owner_; }
 
  private:

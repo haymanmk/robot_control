@@ -19,7 +19,8 @@
 /// Every one of these can be refused, usually by a resource limit. A control
 /// process that silently runs without them is worse than one that never asked,
 /// because you will believe its timing numbers. So this reports what it got,
-/// and when it is refused it reports the numbers you need to fix it.
+/// and when it is refused it reports the numbers you need to fix it
+/// (docs/rt-setup.md).
 
 #include <cstddef>
 #include <cstdint>
@@ -28,11 +29,12 @@
 
 namespace rc::rt {
 
-/// Resource limits and memory figures relevant to locking, all in bytes.
+/// Resource limits and memory figures that decide whether mlockall() can
+/// succeed, all in bytes. Read them before changing a limit, not after.
 struct MemoryFigures {
   std::uint64_t memlock_soft = 0;   ///< RLIMIT_MEMLOCK soft limit (UINT64_MAX = unlimited)
-  std::uint64_t memlock_hard = 0;
-  std::uint64_t rtprio_hard = 0;    ///< RLIMIT_RTPRIO hard limit (max SCHED_FIFO priority)
+  std::uint64_t memlock_hard = 0;   ///< RLIMIT_MEMLOCK hard limit; only root can raise it
+  std::uint64_t rtprio_hard = 0;    ///< RLIMIT_RTPRIO hard limit: the highest SCHED_FIFO priority allowed
   std::uint64_t vm_size = 0;        ///< VmSize: everything mapped -- what mlockall(MCL_CURRENT) locks
   std::uint64_t vm_rss = 0;         ///< VmRSS: actually resident right now
   std::uint64_t vm_locked = 0;      ///< VmLck: currently locked
@@ -40,6 +42,7 @@ struct MemoryFigures {
 
   /// Read the current values. Does file I/O; never call from the cyclic path.
   [[nodiscard]] static MemoryFigures read();
+  /// Three lines: limits, memory, rtprio -- indented to match RtStatus::format().
   [[nodiscard]] std::string format() const;
 };
 
@@ -50,18 +53,23 @@ struct MemoryFigures {
 /// and locked in full: one background thread costs 72 MiB of locked memory.
 /// This caps the arena count, stops malloc handing memory back to the kernel
 /// (which would let later allocations fault again), and sets a small default
-/// thread stack. Call it first thing in main().
+/// thread stack. Call prepare_process() first thing in main().
 struct ProcessTuning {
-  bool single_malloc_arena = true;
+  bool single_malloc_arena = true;        ///< mallopt(M_ARENA_MAX, 1)
   bool keep_freed_memory = true;          ///< M_TRIM_THRESHOLD=-1, M_MMAP_MAX=0
-  std::size_t default_thread_stack = 1024 * 1024;  ///< 0 = leave glibc's default
+  std::size_t default_thread_stack = 1024 * 1024;  ///< bytes for every later thread; 0 = glibc default
 };
+
+/// Apply ProcessTuning. Returns one human-readable note per step taken.
 std::vector<std::string> prepare_process(const ProcessTuning& tuning = {}) noexcept;
 
+/// What to request from the kernel: scheduling class, memory locking, CPU
+/// affinity and pre-faulting. Each can be refused; see RtStatus.
 struct RtOptions {
   /// SCHED_FIFO priority, 1..99. 0 means "leave the scheduling class alone".
   /// Stay below the kernel's own threads (typically 50) unless you know why.
   int priority = 0;
+  /// mlockall() the whole address space so the cyclic path never page-faults.
   bool lock_memory = true;
   /// If the soft RLIMIT_MEMLOCK is below the hard limit, raise it to the hard
   /// limit before locking. A process may do this for itself; only raising the
@@ -69,18 +77,29 @@ struct RtOptions {
   bool raise_soft_memlock = true;
   /// CPU to pin to; -1 means no affinity change.
   int cpu = -1;
+  /// Stack bytes to touch up front so the first write in the loop does not fault.
   std::size_t prefault_bytes = 512 * 1024;
 };
 
+/// Which of the requested real-time steps were actually granted. A process
+/// that silently runs without them produces timing numbers you will wrongly
+/// believe, so always read this.
 struct RtStatus {
+  /// SCHED_FIFO was applied at the requested priority.
   bool scheduler_applied = false;
+  /// mlockall() succeeded.
   bool memory_locked = false;
+  /// The thread is pinned to the requested CPU.
   bool affinity_applied = false;
-  MemoryFigures memory;                 ///< as read after the attempt
+  /// Limits and memory figures as read after the attempt.
+  MemoryFigures memory;
+  /// Human-readable detail on every step, including why one was refused and
+  /// the numbers needed to fix it.
   std::vector<std::string> notes;
 
   /// True only if every requested step succeeded.
   [[nodiscard]] bool fully_applied(const RtOptions& opts) const noexcept;
+  /// The notes, one per line, indented to line up with CyclicReport::format().
   [[nodiscard]] std::string format() const;
 };
 

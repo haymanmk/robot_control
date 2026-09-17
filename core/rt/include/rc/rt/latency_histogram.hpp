@@ -23,6 +23,10 @@
 
 namespace rc::rt {
 
+/// Allocation-free distribution recorder for the cyclic path. Buckets are
+/// allocated once at construction, record() is O(1) and lock-free, and
+/// percentiles are reconstructed from the buckets afterwards. min and max are
+/// tracked exactly; percentiles have bucket resolution.
 class LatencyHistogram {
  public:
   /// Linear buckets spanning [lo_ns, hi_ns]. Samples outside that range land in
@@ -33,10 +37,15 @@ class LatencyHistogram {
   /// Hot path. No allocation, no locks, no syscalls.
   void record(std::int64_t value_ns) noexcept;
 
+  /// Label given at construction; appears in format_row() and format_chart().
   [[nodiscard]] const std::string& name() const noexcept { return name_; }
+  /// Samples recorded, including out-of-range ones.
   [[nodiscard]] std::uint64_t count() const noexcept { return count_; }
+  /// Exact minimum sample; 0 if nothing was recorded.
   [[nodiscard]] std::int64_t min_ns() const noexcept;
+  /// Exact maximum sample; 0 if nothing was recorded.
   [[nodiscard]] std::int64_t max_ns() const noexcept;
+  /// Exact arithmetic mean; 0 if nothing was recorded.
   [[nodiscard]] double mean_ns() const noexcept;
 
   /// Bucket-resolution percentile, e.g. percentile_ns(0.999).

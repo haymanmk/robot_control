@@ -25,6 +25,7 @@ if(RC_SANITIZE)
 endif()
 
 include(cmake/GitVersion.cmake)
+include(cmake/Docs.cmake)
 enable_testing()
 
 add_subdirectory(core/rt)
