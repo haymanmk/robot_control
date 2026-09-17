@@ -51,6 +51,7 @@ real-time code.
 - [`bench/`](bench/) — the performance benchmarks; [loop_timing](bench/loop_timing/) needs no hardware
 - [`notebooks/`](notebooks/) — analysis and write-ups, kept as plain `.py` files
 - `tools/telemetry_dump.py` — reads a telemetry run with nothing installed
+- [`docs/rt-setup.md`](docs/rt-setup.md) — locked memory and real-time priority limits: examine, then raise
 - [`docs/adr/`](docs/adr/) — the design decisions and the reasons behind them
 
 ## Decisions so far

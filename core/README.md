@@ -58,6 +58,9 @@ non-event. Only a client that has accepted responsibility is held to it.
 ```bash
 cmake -B build && cmake --build build -j && ctest --test-dir build --output-on-failure
 
+# first: can this user run real-time code on this machine?
+./build/app/rc_rtcheck/rc_rtcheck        # see docs/rt-setup.md if it says NOT READY
+
 # in two terminals
 ./build/app/rc_core_demo/rc_core_demo --server
 ./build/app/rc_core_demo/rc_core_demo --client

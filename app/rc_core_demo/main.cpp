@@ -72,6 +72,11 @@ struct Plant {
 
 int run_server() {
   install_signal_handlers();
+  // Before any thread exists: one malloc arena, small thread stacks. Without
+  // this, mlockall(MCL_FUTURE) locks ~72 MiB per background thread.
+  for (const auto& n : rt::prepare_process()) {
+    std::printf("  rt        %s\n", n.c_str());
+  }
 
   bridge::BridgeServer server;
   const auto period_ns = static_cast<std::uint32_t>(1e9 / kRateHz);

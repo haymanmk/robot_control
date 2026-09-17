@@ -1,5 +1,6 @@
 #include "rc/telemetry/provenance.hpp"
 
+#include <sys/resource.h>
 #include <sys/utsname.h>
 #include <unistd.h>
 
@@ -148,6 +149,20 @@ Provenance Provenance::collect() {
   p.nohz_full = read_first_line("/sys/devices/system/cpu/nohz_full");
 
   p.nvidia_driver = read_nvidia_driver();
+
+  rlimit rl{};
+  auto lim = [](rlim_t v) -> std::string {
+    if (v == RLIM_INFINITY) return "unlimited";
+    char b[32];
+    std::snprintf(b, sizeof(b), "%.1fMiB", static_cast<double>(v) / 1048576.0);
+    return b;
+  };
+  if (::getrlimit(RLIMIT_MEMLOCK, &rl) == 0) {
+    p.memlock_limit = lim(rl.rlim_cur) + "/" + lim(rl.rlim_max);
+  }
+  if (::getrlimit(RLIMIT_RTPRIO, &rl) == 0) {
+    p.rtprio_limit = rl.rlim_max == RLIM_INFINITY ? "99" : std::to_string(rl.rlim_max);
+  }
   p.wall_clock = iso8601_utc_now();
   return p;
 }
@@ -173,6 +188,8 @@ std::string Provenance::to_json() const {
   os << "    \"cpu_governor\": " << s(cpu_governor) << ",\n";
   os << "    \"isolated_cpus\": " << s(isolated_cpus) << ",\n";
   os << "    \"nohz_full\": " << s(nohz_full) << ",\n";
+  os << "    \"memlock_limit\": " << s(memlock_limit) << ",\n";
+  os << "    \"rtprio_limit\": " << s(rtprio_limit) << ",\n";
   os << "    \"nvidia_driver\": " << s(nvidia_driver) << ",\n";
   os << "    \"gpu_workload_running\": " << (gpu_workload_running ? "true" : "false") << "\n";
   os << "  },\n";
@@ -200,6 +217,7 @@ std::string Provenance::to_summary() const {
   if (!isolated_cpus.empty()) {
     os << "  isolated  " << isolated_cpus << '\n';
   }
+  os << "  limits    memlock " << memlock_limit << ", rtprio " << rtprio_limit << '\n';
   if (!nvidia_driver.empty()) {
     os << "  gpu       " << nvidia_driver
        << (gpu_workload_running ? "  [inference RUNNING]" : "  [idle]") << '\n';

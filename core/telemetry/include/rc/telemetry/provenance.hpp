@@ -36,6 +36,8 @@ struct Provenance {
   std::string cpu_governor;
   std::string isolated_cpus;  ///< /sys/devices/system/cpu/isolated
   std::string nohz_full;
+  std::string memlock_limit;  ///< "soft/hard" in MiB, or "unlimited"
+  std::string rtprio_limit;   ///< RLIMIT_RTPRIO hard limit
 
   // GPU (ADR-0007: the driver is mandatory and it is a latency source)
   std::string nvidia_driver;  ///< empty if not present
