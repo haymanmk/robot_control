@@ -149,6 +149,14 @@ void prefault_stack(std::size_t bytes) noexcept {
   }
   // volatile so the compiler cannot conclude this buffer is dead and delete the
   // very page touches we are here to perform.
+  //
+  // Under -fstack-clash-protection (GCC's default on Ubuntu) the alloca itself
+  // already probes every page it allocates, top to bottom, so the loop below is
+  // redundant there -- but it is what makes this correct on a toolchain without
+  // that protection, and it costs nothing. Either way the growth happens here,
+  // which is why this must run BEFORE mlockall(): on the main thread the stack
+  // is mapped on demand, and growing a locked stack past RLIMIT_MEMLOCK is
+  // SIGSEGV, not an error (docs/rt-setup.md).
   volatile unsigned char* buf = static_cast<volatile unsigned char*>(alloca(bytes));
   for (std::size_t i = 0; i < bytes; i += 4096) {
     buf[i] = 0;

@@ -86,6 +86,36 @@ stack grows or the heap grows past the limit, the kernel does not return
 error to check and nothing to catch: the process is simply killed at the next
 allocation or the next deep function call.
 
+### Why the main thread's stack is the usual trigger
+
+Thread stacks come in two kinds, and they behave differently under a lock:
+
+- A **pthread stack** (every `std::thread`) is created with `mmap` at its full
+  size. It is in `VmSize` from the moment the thread exists, whether or not it
+  is ever touched. `mlockall(MCL_CURRENT)` locks all of it at once, and nothing
+  the thread does later can grow it.
+- The **main thread's stack** is different. The kernel maps only the part that
+  has been used so far — a few hundred KiB — and **grows it on demand**, one
+  page fault at a time, up to `RLIMIT_STACK`. `VmStk` in `/proc/<pid>/status`
+  shows its current size.
+
+So a 512 KiB `alloca` on the main thread, *after* locking, is not "512 KiB out
+of an 8 MiB stack". It is 512 KiB of **new mapping** that did not exist when
+`mlockall` counted, and under `MCL_FUTURE` every byte of it must be locked as
+it appears. If `VmSize` was 7.8 MiB against an 8 MiB limit, the first touch
+asks for 8.3 MiB and is refused with `SIGSEGV`.
+
+The accounting is page-exact: with 8 pages of room left under the limit, the
+ninth new stack page is the one that dies (measured; 19 pages of room gave
+death on the twentieth). It looks like it dies "on the first touch" only
+because of the compiler. Ubuntu's GCC enables `-fstack-clash-protection` by
+default, and under it an `alloca` **probes every page it allocates, top to
+bottom, before returning** — that is what the protection is. So the stack
+growth, and the death, happen inside the `alloca` itself, before the first
+line of the loop that follows it. A debugger points at the function, the loop
+counter reads zero, and the pages that would have fit are used up by the
+probe. Either way the outcome is the same: dead, with no error to handle.
+
 So "the limit is bigger than `VmSize`" is not enough. The limit must be bigger
 than everything the process will ever map. `apply_realtime()` therefore:
 
