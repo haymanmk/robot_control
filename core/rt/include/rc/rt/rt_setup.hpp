@@ -21,6 +21,14 @@
 /// because you will believe its timing numbers. So this reports what it got,
 /// and when it is refused it reports the numbers you need to fix it
 /// (docs/rt-setup.md).
+///
+/// One refusal is deliberate rather than imposed. Once mlockall(MCL_FUTURE)
+/// has succeeded, exceeding RLIMIT_MEMLOCK later -- by growing the stack or
+/// the heap -- does not fail with an error. The page fault fails, and the
+/// kernel delivers SIGSEGV. So apply_realtime() locks only when the limit
+/// leaves room to grow (RtOptions::headroom_bytes), and otherwise explains
+/// what to raise. A lock that succeeds and kills you a millisecond later is
+/// worse than no lock.
 
 #include <cstddef>
 #include <cstdint>
@@ -75,9 +83,18 @@ struct RtOptions {
   /// limit before locking. A process may do this for itself; only raising the
   /// hard limit needs privilege.
   bool raise_soft_memlock = true;
+  /// Locked memory that must remain *unused* under RLIMIT_MEMLOCK after
+  /// locking. With MCL_FUTURE, a later page fault that would exceed the limit
+  /// is not an error return: the kernel delivers SIGSEGV. So if
+  /// VmSize + prefault_bytes + headroom_bytes exceeds the limit, apply_realtime()
+  /// refuses to lock and says why, rather than letting the process die at the
+  /// next stack growth or allocation. Ignored when CAP_IPC_LOCK is held.
+  std::size_t headroom_bytes = 4 * 1024 * 1024;
   /// CPU to pin to; -1 means no affinity change.
   int cpu = -1;
-  /// Stack bytes to touch up front so the first write in the loop does not fault.
+  /// Stack bytes to touch up front so the first write in the loop does not
+  /// fault. Touched *before* locking, so they are counted and never grow the
+  /// stack afterwards.
   std::size_t prefault_bytes = 512 * 1024;
 };
 

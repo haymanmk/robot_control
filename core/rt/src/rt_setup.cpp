@@ -45,12 +45,11 @@ std::uint64_t proc_status_kb(const char* key) {
   return 0;
 }
 
-/// CAP_IPC_LOCK lets a process ignore RLIMIT_MEMLOCK. Root has it; a service
-/// can be granted it. We only need a yes/no, so read the effective set.
+/// CAP_IPC_LOCK lets a process ignore RLIMIT_MEMLOCK. Read the effective
+/// capability set rather than assuming uid 0 has it: a root process inside a
+/// container or a capability-dropped service can lack it, and then the limit
+/// applies -- and the headroom check must run.
 bool detect_cap_ipc_lock() {
-  if (::geteuid() == 0) {
-    return true;
-  }
   std::ifstream f("/proc/self/status");
   std::string line;
   while (std::getline(f, line)) {
@@ -179,6 +178,12 @@ RtStatus apply_realtime(const RtOptions& opts) noexcept {
     }
   }
 
+  // Touch the stack *before* locking: the pages are then part of VmSize when
+  // we decide whether locking is safe, and locking never has to grow the stack
+  // afterwards. (Growing a VM_LOCKED stack past RLIMIT_MEMLOCK is SIGSEGV.)
+  prefault_stack(opts.prefault_bytes);
+  before = MemoryFigures::read();
+
   if (opts.lock_memory) {
     if (opts.raise_soft_memlock && before.memlock_soft < before.memlock_hard) {
       rlimit rl{};
@@ -191,15 +196,30 @@ RtStatus apply_realtime(const RtOptions& opts) noexcept {
         before = MemoryFigures::read();
       }
     }
-    if (::mlockall(MCL_CURRENT | MCL_FUTURE) == 0) {
+
+    // Would locking leave room to grow? If not, do not lock. Past this point a
+    // page fault that exceeds the limit is fatal, not an error, and a process
+    // that dies on its first heap or stack growth is worse than one that
+    // reports honestly that it is running unlocked.
+    const std::uint64_t needed = before.vm_size + opts.headroom_bytes;
+    const bool limited = !before.has_cap_ipc_lock && before.memlock_soft != kUnlimited;
+    if (limited && needed > before.memlock_soft) {
+      st.notes.emplace_back(
+          "mlockall: REFUSED -- this process maps " + mib(before.vm_size) + " and needs " +
+          mib(opts.headroom_bytes) + " of headroom to grow, but RLIMIT_MEMLOCK is " +
+          mib(before.memlock_soft) + " soft / " + mib(before.memlock_hard) +
+          " hard. Locking anyway would succeed and then SIGSEGV on the next page fault. "
+          "Raise the limit to at least " + mib(needed) + " (docs/rt-setup.md)");
+    } else if (::mlockall(MCL_CURRENT | MCL_FUTURE) == 0) {
       st.memory_locked = true;
       const MemoryFigures after = MemoryFigures::read();
-      st.notes.emplace_back("mlockall(MCL_CURRENT|MCL_FUTURE): OK, " + mib(after.vm_locked) +
-                            " locked");
+      std::string note = "mlockall(MCL_CURRENT|MCL_FUTURE): OK, " + mib(after.vm_locked) + " locked";
+      if (limited) {
+        note += ", " + mib(before.memlock_soft - after.vm_locked) + " headroom left";
+      }
+      st.notes.emplace_back(note);
     } else {
       const int err = errno;
-      // Say exactly what is needed: the limit, and how much this process maps.
-      // "raise RLIMIT_MEMLOCK" alone sends people to guess at a number.
       st.notes.emplace_back(std::string("mlockall: FAILED (") + std::strerror(err) +
                             ") -- this process maps " + mib(before.vm_size) +
                             " but RLIMIT_MEMLOCK is " + mib(before.memlock_soft) + " soft / " +
@@ -221,7 +241,6 @@ RtStatus apply_realtime(const RtOptions& opts) noexcept {
     }
   }
 
-  prefault_stack(opts.prefault_bytes);
   st.memory = MemoryFigures::read();
   return st;
 }

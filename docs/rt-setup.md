@@ -14,8 +14,9 @@ control core**, not as root:
 ./build/app/rc_rtcheck/rc_rtcheck
 ```
 
-It prints the current limits, how much memory this process maps, what happens
-when it asks for `SCHED_FIFO` and `mlockall`, and what is still missing. It
+It prints the current limits, how much memory this process maps, how much
+headroom locking would leave, what happens when it asks for `SCHED_FIFO` and
+`mlockall`, and what is still missing. It
 changes nothing on the system. Its exit status is 0 only if every step was
 granted, so a launch script can use it as a gate.
 
@@ -71,6 +72,31 @@ libraries. That is still just over the 8 MiB default, so the limit does need
 raising — but by a small amount, not by ten times. Any real-time process should
 be measured the same way; do not raise the limit to cover a footprint you have
 not looked at.
+
+## Why a tight limit crashes instead of failing
+
+This is the part that is not obvious, and it produced a segmentation fault in
+`rc_rtcheck` on a machine where the limit was just above the footprint.
+
+`mlockall(MCL_CURRENT | MCL_FUTURE)` returns an error only if the memory
+mapped *right now* does not fit under the limit. If it fits, it succeeds — and
+from then on every new page the process touches must also be locked. When the
+stack grows or the heap grows past the limit, the kernel does not return
+`ENOMEM`. **The page fault fails, and the process gets `SIGSEGV`.** There is no
+error to check and nothing to catch: the process is simply killed at the next
+allocation or the next deep function call.
+
+So "the limit is bigger than `VmSize`" is not enough. The limit must be bigger
+than everything the process will ever map. `apply_realtime()` therefore:
+
+1. touches its stack **before** locking, so those pages are counted;
+2. checks that `VmSize` plus a headroom (default 4 MiB) fits under the limit;
+3. **refuses to lock** if it does not, and prints the number to raise the limit to.
+
+The first version locked first and prefaulted afterwards, and on a machine
+with an 8 MiB limit and a 7.8 MiB footprint that was a crash. A lock that
+succeeds and kills you a moment later is worse than no lock, because the timing
+numbers up to that moment look fine.
 
 ## Then raise the limits, as far as needed and no further
 
