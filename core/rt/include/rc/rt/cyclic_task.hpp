@@ -35,7 +35,7 @@
 
 #include "rc/rt/clock.hpp"
 #include "rc/rt/latency_histogram.hpp"
-#include "rc/rt/rt_setup.hpp"
+#include "rc/rt/realtime_setup.hpp"
 
 namespace rc::rt {
 
@@ -45,7 +45,7 @@ struct CyclicConfig {
   /// Nominal cycle period. 2 ms is 500 Hz, the B601-RS nominal.
   nanoseconds period{std::chrono::milliseconds(2)};
   /// Scheduler, memory-lock and affinity settings applied at run() start.
-  RtOptions realtime{};
+  RealtimeOptions realtime{};
   /// A cycle whose period error exceeds this counts as an overrun.
   /// Zero means "10% of the period".
   nanoseconds overrun_threshold{nanoseconds::zero()};
@@ -70,7 +70,7 @@ struct CyclicReport {
   /// Nominal period the run was configured with.
   nanoseconds period{nanoseconds::zero()};
   /// Which real-time setup steps were actually granted.
-  RtStatus realtime_status{};
+  RealtimeStatus realtime_status{};
 
   /// wake - deadline: the scheduler's fault.
   LatencyHistogram wake_latency;
@@ -108,7 +108,7 @@ class CyclicTask {
   CyclicReport run_until(const std::atomic<bool>& stop, const cycle_body& body);
 
  private:
-  CyclicReport run_impl(std::uint64_t max_cycles, const std::atomic<bool>* stop,
+  CyclicReport run_loop(std::uint64_t max_cycles, const std::atomic<bool>* stop,
                         const cycle_body& body);
 
   CyclicConfig config;

@@ -1,6 +1,6 @@
 #pragma once
 
-/// @file rt_setup.hpp
+/// @file realtime_setup.hpp
 /// What a process must do before it may call itself real-time on Linux, and
 /// honest reporting of which of those things it was actually allowed to do.
 ///
@@ -26,7 +26,7 @@
 /// has succeeded, exceeding RLIMIT_MEMLOCK later -- by growing the stack or
 /// the heap -- does not fail with an error. The page fault fails, and the
 /// kernel delivers SIGSEGV. So apply_realtime() locks only when the limit
-/// leaves room to grow (RtOptions::headroom_bytes), and otherwise explains
+/// leaves room to grow (RealtimeOptions::headroom_bytes), and otherwise explains
 /// what to raise. A lock that succeeds and kills you a millisecond later is
 /// worse than no lock.
 
@@ -50,7 +50,7 @@ struct MemoryFigures {
 
   /// Read the current values. Does file I/O; never call from the cyclic path.
   [[nodiscard]] static MemoryFigures read();
-  /// Three lines: limits, memory, rtprio -- indented to match RtStatus::format().
+  /// Three lines: limits, memory, rtprio -- indented to match RealtimeStatus::format().
   [[nodiscard]] std::string format() const;
 };
 
@@ -72,8 +72,8 @@ struct ProcessTuning {
 std::vector<std::string> prepare_process(const ProcessTuning& tuning = {}) noexcept;
 
 /// What to request from the kernel: scheduling class, memory locking, CPU
-/// affinity and pre-faulting. Each can be refused; see RtStatus.
-struct RtOptions {
+/// affinity and pre-faulting. Each can be refused; see RealtimeStatus.
+struct RealtimeOptions {
   /// SCHED_FIFO priority, 1..99. 0 means "leave the scheduling class alone".
   /// Stay below the kernel's own threads (typically 50) unless you know why.
   int priority = 0;
@@ -101,7 +101,7 @@ struct RtOptions {
 /// Which of the requested real-time steps were actually granted. A process
 /// that silently runs without them produces timing numbers you will wrongly
 /// believe, so always read this.
-struct RtStatus {
+struct RealtimeStatus {
   /// SCHED_FIFO was applied at the requested priority.
   bool scheduler_applied = false;
   /// mlockall() succeeded.
@@ -115,13 +115,13 @@ struct RtStatus {
   std::vector<std::string> notes;
 
   /// True only if every requested step succeeded.
-  [[nodiscard]] bool fully_applied(const RtOptions& options) const noexcept;
+  [[nodiscard]] bool fully_applied(const RealtimeOptions& options) const noexcept;
   /// The notes, one per line, indented to line up with CyclicReport::format().
   [[nodiscard]] std::string format() const;
 };
 
 /// Apply what is permitted; never throws, never exits. Read the result.
-RtStatus apply_realtime(const RtOptions& options) noexcept;
+RealtimeStatus apply_realtime(const RealtimeOptions& options) noexcept;
 
 /// Grow and dirty the stack so later calls do not fault. Called by
 /// apply_realtime(); exposed because every thread needs its own.

@@ -54,14 +54,14 @@ CyclicTask::CyclicTask(CyclicConfig config_) : config(config_) {
 }
 
 CyclicReport CyclicTask::run(std::uint64_t cycles, const cycle_body& body) {
-  return run_impl(cycles, nullptr, body);
+  return run_loop(cycles, nullptr, body);
 }
 
 CyclicReport CyclicTask::run_until(const std::atomic<bool>& stop, const cycle_body& body) {
-  return run_impl(std::numeric_limits<std::uint64_t>::max(), &stop, body);
+  return run_loop(std::numeric_limits<std::uint64_t>::max(), &stop, body);
 }
 
-CyclicReport CyclicTask::run_impl(std::uint64_t max_cycles, const std::atomic<bool>* stop,
+CyclicReport CyclicTask::run_loop(std::uint64_t max_cycles, const std::atomic<bool>* stop,
                                   const cycle_body& body) {
   CyclicReport report(config.histogram_span, config.period);
   report.realtime_status = apply_realtime(config.realtime);

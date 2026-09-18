@@ -1,7 +1,7 @@
 add_library(rc_rt
   src/clock.cpp
   src/latency_histogram.cpp
-  src/rt_setup.cpp
+  src/realtime_setup.cpp
   src/cyclic_task.cpp
 )
 add_library(rc::rt ALIAS rc_rt)

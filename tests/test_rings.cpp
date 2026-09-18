@@ -7,16 +7,16 @@
 #include <vector>
 
 #include "rc/rt/seqlock.hpp"
-#include "rc/rt/spsc_ring.hpp"
+#include "rc/rt/single_producer_single_consumer_ring.hpp"
 #include "test_support.hpp"
 
 using rc::rt::Seqlock;
-using rc::rt::SpscRing;
+using rc::rt::SingleProducerSingleConsumerRing;
 
 namespace {
 
-void test_spsc_basic() {
-  SpscRing<int, 4> ring;
+void test_ring_basic() {
+  SingleProducerSingleConsumerRing<int, 4> ring;
   int out = 0;
   CHECK(!ring.pop(out));               // empty
   CHECK(ring.push(1));
@@ -24,7 +24,7 @@ void test_spsc_basic() {
   CHECK(ring.push(3));
   CHECK(ring.push(4));
   CHECK_MSG(!ring.push(5), "must report full rather than overwrite");
-  CHECK_EQ(ring.size_approx(), 4u);
+  CHECK_EQ(ring.approximate_size(), 4u);
 
   CHECK(ring.pop(out));
   CHECK_EQ(out, 1);
@@ -38,8 +38,8 @@ void test_spsc_basic() {
 
 /// Wrap-around is where an implementation using wrapped indices instead of
 /// free-running counters breaks. Push/pop far more than capacity.
-void test_spsc_wraparound() {
-  SpscRing<std::uint64_t, 8> ring;
+void test_ring_wraparound() {
+  SingleProducerSingleConsumerRing<std::uint64_t, 8> ring;
   std::uint64_t out = 0;
   for (std::uint64_t value = 0; value < 10'000; ++value) {
     CHECK(ring.push(value));
@@ -55,9 +55,9 @@ void test_spsc_wraparound() {
 
 /// The real test: a producer and a consumer on different threads. Every value
 /// must arrive exactly once, in order, with nothing torn or duplicated.
-void test_spsc_concurrent() {
+void test_ring_concurrent() {
   constexpr std::uint64_t count = 200'000;
-  SpscRing<std::uint64_t, 1024> ring;
+  SingleProducerSingleConsumerRing<std::uint64_t, 1024> ring;
   std::atomic<bool> producer_done{false};
 
   std::thread producer([&] {
@@ -79,7 +79,7 @@ void test_spsc_concurrent() {
         break;
       }
       ++expected;
-    } else if (producer_done.load(std::memory_order_acquire) && ring.empty_approx()) {
+    } else if (producer_done.load(std::memory_order_acquire) && ring.approximately_empty()) {
       break;
     }
   }
@@ -163,9 +163,9 @@ void test_seqlock_generation() {
 }  // namespace
 
 int main() {
-  test_spsc_basic();
-  test_spsc_wraparound();
-  test_spsc_concurrent();
+  test_ring_basic();
+  test_ring_wraparound();
+  test_ring_concurrent();
   test_seqlock_concurrent();
   test_seqlock_generation();
   return rc::test::finish("rings");

@@ -1,4 +1,4 @@
-#include "rc/rt/rt_setup.hpp"
+#include "rc/rt/realtime_setup.hpp"
 
 #include <alloca.h>
 #include <malloc.h>
@@ -19,11 +19,11 @@ namespace {
 
 constexpr std::uint64_t unlimited = UINT64_MAX;
 
-std::uint64_t rlim_to_u64(rlim_t value) noexcept {
+std::uint64_t limit_to_bytes(rlim_t value) noexcept {
   return value == RLIM_INFINITY ? unlimited : static_cast<std::uint64_t>(value);
 }
 
-std::string mib(std::uint64_t bytes) {
+std::string mebibytes(std::uint64_t bytes) {
   if (bytes == unlimited) {
     return "unlimited";
   }
@@ -33,7 +33,7 @@ std::string mib(std::uint64_t bytes) {
 }
 
 /// Parse "VmXxx:  1234 kB" lines from /proc/self/status.
-std::uint64_t proc_status_kb(const char* key) {
+std::uint64_t read_process_status_bytes(const char* key) {
   std::ifstream status_file("/proc/self/status");
   std::string line;
   const std::size_t key_length = std::strlen(key);
@@ -68,28 +68,28 @@ MemoryFigures MemoryFigures::read() {
   MemoryFigures figures;
   rlimit limit{};
   if (::getrlimit(RLIMIT_MEMLOCK, &limit) == 0) {
-    figures.memlock_soft_limit = rlim_to_u64(limit.rlim_cur);
-    figures.memlock_hard_limit = rlim_to_u64(limit.rlim_max);
+    figures.memlock_soft_limit = limit_to_bytes(limit.rlim_cur);
+    figures.memlock_hard_limit = limit_to_bytes(limit.rlim_max);
   }
   if (::getrlimit(RLIMIT_RTPRIO, &limit) == 0) {
-    figures.realtime_priority_limit = rlim_to_u64(limit.rlim_max);
+    figures.realtime_priority_limit = limit_to_bytes(limit.rlim_max);
   }
-  figures.mapped_bytes = proc_status_kb("VmSize:");
-  figures.resident_bytes = proc_status_kb("VmRSS:");
-  figures.locked_bytes = proc_status_kb("VmLck:");
+  figures.mapped_bytes = read_process_status_bytes("VmSize:");
+  figures.resident_bytes = read_process_status_bytes("VmRSS:");
+  figures.locked_bytes = read_process_status_bytes("VmLck:");
   figures.has_cap_ipc_lock = detect_cap_ipc_lock();
   return figures;
 }
 
 std::string MemoryFigures::format() const {
   std::ostringstream out;
-  out << "  memlock   limit soft " << mib(memlock_soft_limit) << ", hard " << mib(memlock_hard_limit);
+  out << "  memlock   limit soft " << mebibytes(memlock_soft_limit) << ", hard " << mebibytes(memlock_hard_limit);
   if (has_cap_ipc_lock) {
     out << "  (CAP_IPC_LOCK: limit does not apply)";
   }
   out << '\n';
-  out << "  memory    mapped " << mib(mapped_bytes) << ", resident " << mib(resident_bytes) << ", locked "
-     << mib(locked_bytes) << '\n';
+  out << "  memory    mapped " << mebibytes(mapped_bytes) << ", resident " << mebibytes(resident_bytes) << ", locked "
+     << mebibytes(locked_bytes) << '\n';
   out << "  rtprio    hard limit " << (realtime_priority_limit == unlimited ? 99 : realtime_priority_limit) << '\n';
   return out.str();
 }
@@ -118,7 +118,7 @@ std::vector<std::string> prepare_process(const ProcessTuning& tuning) noexcept {
     if (::pthread_attr_init(&attributes) == 0) {
       if (::pthread_attr_setstacksize(&attributes, tuning.default_thread_stack) == 0 &&
           ::pthread_setattr_default_np(&attributes) == 0) {
-        notes.emplace_back("threads: default stack " + mib(tuning.default_thread_stack));
+        notes.emplace_back("threads: default stack " + mebibytes(tuning.default_thread_stack));
       } else {
         notes.emplace_back("threads: could not set default stack size");
       }
@@ -128,14 +128,14 @@ std::vector<std::string> prepare_process(const ProcessTuning& tuning) noexcept {
   return notes;
 }
 
-bool RtStatus::fully_applied(const RtOptions& options) const noexcept {
+bool RealtimeStatus::fully_applied(const RealtimeOptions& options) const noexcept {
   if (options.priority > 0 && !scheduler_applied) return false;
   if (options.lock_memory && !memory_locked) return false;
   if (options.cpu >= 0 && !affinity_applied) return false;
   return true;
 }
 
-std::string RtStatus::format() const {
+std::string RealtimeStatus::format() const {
   std::ostringstream out;
   for (const auto& note : notes) {
     out << "  rt        " << note << '\n';
@@ -163,8 +163,8 @@ void prefault_stack(std::size_t bytes) noexcept {
   }
 }
 
-RtStatus apply_realtime(const RtOptions& options) noexcept {
-  RtStatus status;
+RealtimeStatus apply_realtime(const RealtimeOptions& options) noexcept {
+  RealtimeStatus status;
   MemoryFigures before = MemoryFigures::read();
 
   if (options.priority > 0) {
@@ -199,8 +199,8 @@ RtStatus apply_realtime(const RtOptions& options) noexcept {
                                                       : static_cast<rlim_t>(before.memlock_hard_limit);
       limit.rlim_max = limit.rlim_cur;
       if (::setrlimit(RLIMIT_MEMLOCK, &limit) == 0) {
-        status.notes.emplace_back("memlock: raised soft limit " + mib(before.memlock_soft_limit) +
-                              " -> " + mib(before.memlock_hard_limit) + " (the hard limit)");
+        status.notes.emplace_back("memlock: raised soft limit " + mebibytes(before.memlock_soft_limit) +
+                              " -> " + mebibytes(before.memlock_hard_limit) + " (the hard limit)");
         before = MemoryFigures::read();
       }
     }
@@ -213,25 +213,25 @@ RtStatus apply_realtime(const RtOptions& options) noexcept {
     const bool limited = !before.has_cap_ipc_lock && before.memlock_soft_limit != unlimited;
     if (limited && needed > before.memlock_soft_limit) {
       status.notes.emplace_back(
-          "mlockall: REFUSED -- this process maps " + mib(before.mapped_bytes) + " and needs " +
-          mib(options.headroom_bytes) + " of headroom to grow, but RLIMIT_MEMLOCK is " +
-          mib(before.memlock_soft_limit) + " soft / " + mib(before.memlock_hard_limit) +
+          "mlockall: REFUSED -- this process maps " + mebibytes(before.mapped_bytes) + " and needs " +
+          mebibytes(options.headroom_bytes) + " of headroom to grow, but RLIMIT_MEMLOCK is " +
+          mebibytes(before.memlock_soft_limit) + " soft / " + mebibytes(before.memlock_hard_limit) +
           " hard. Locking anyway would succeed and then SIGSEGV on the next page fault. "
-          "Raise the limit to at least " + mib(needed) + " (docs/rt-setup.md)");
+          "Raise the limit to at least " + mebibytes(needed) + " (docs/rt-setup.md)");
     } else if (::mlockall(MCL_CURRENT | MCL_FUTURE) == 0) {
       status.memory_locked = true;
       const MemoryFigures after = MemoryFigures::read();
-      std::string note = "mlockall(MCL_CURRENT|MCL_FUTURE): OK, " + mib(after.locked_bytes) + " locked";
+      std::string note = "mlockall(MCL_CURRENT|MCL_FUTURE): OK, " + mebibytes(after.locked_bytes) + " locked";
       if (limited) {
-        note += ", " + mib(before.memlock_soft_limit - after.locked_bytes) + " headroom left";
+        note += ", " + mebibytes(before.memlock_soft_limit - after.locked_bytes) + " headroom left";
       }
       status.notes.emplace_back(note);
     } else {
       const int error_number = errno;
       status.notes.emplace_back(std::string("mlockall: FAILED (") + std::strerror(error_number) +
-                            ") -- this process maps " + mib(before.mapped_bytes) +
-                            " but RLIMIT_MEMLOCK is " + mib(before.memlock_soft_limit) + " soft / " +
-                            mib(before.memlock_hard_limit) +
+                            ") -- this process maps " + mebibytes(before.mapped_bytes) +
+                            " but RLIMIT_MEMLOCK is " + mebibytes(before.memlock_soft_limit) + " soft / " +
+                            mebibytes(before.memlock_hard_limit) +
                             " hard. Run rc_rtcheck, then see docs/rt-setup.md");
     }
   }

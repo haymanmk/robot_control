@@ -180,5 +180,5 @@ sudo prlimit --pid $$ --memlock=unlimited:unlimited --rtprio=99:99
 
 - [ADR-0007](adr/0007-rt-platform-on-a-cuda-laptop.md) — the full tuning order
   for this laptop, and why `hwlatdetect` comes before any of it.
-- `core/rt/include/rc/rt/rt_setup.hpp` — what `apply_realtime()` asks for and
+- `core/rt/include/rc/rt/realtime_setup.hpp` — what `apply_realtime()` asks for and
   how it reports what it got.

@@ -14,7 +14,7 @@
 #include <string>
 #include <thread>
 
-#include "rc/rt/rt_setup.hpp"
+#include "rc/rt/realtime_setup.hpp"
 #include "rc/telemetry/provenance.hpp"
 
 int main(int argc, char** argv) {
@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
 
   std::printf("\n3. apply_realtime(priority=%d, lock_memory=true%s)\n", priority,
               cpu >= 0 ? ", affinity" : "");
-  rc::rt::RtOptions options;
+  rc::rt::RealtimeOptions options;
   options.priority = priority;
   options.lock_memory = true;
   options.cpu = cpu;

@@ -7,7 +7,7 @@ boundary honest as features are added.
 
 | Module | Status | Contents |
 |---|---|---|
-| [`rt/`](rt/) | done | `CLOCK_MONOTONIC` clock; phase-locked `CyclicTask`; `SpscRing`; `Seqlock`; real-time privileges; allocation-free histograms |
+| [`rt/`](rt/) | done | `CLOCK_MONOTONIC` clock; phase-locked `CyclicTask`; `SingleProducerSingleConsumerRing`; `Seqlock`; real-time privileges; allocation-free histograms |
 | [`telemetry/`](telemetry/) | done | fixed-size per-cycle record; provenance collection; file sink |
 | [`bridge/`](bridge/) | done | shared-memory transport; watchdog; server and client endpoints |
 | `can/` | — | SocketCAN with `SO_TIMESTAMPING`; frame encoding; bus statistics |

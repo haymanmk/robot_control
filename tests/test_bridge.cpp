@@ -29,7 +29,9 @@ namespace {
 
 constexpr std::uint32_t period_nanoseconds = 1'000'000;  // 1 ms, to keep tests quick
 
-void sleep_ms(unsigned milliseconds) { std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds)); }
+void sleep_milliseconds(unsigned milliseconds) {
+  std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+}
 
 void test_create_and_attach() {
   const std::string name = "/rc_test_attach";
@@ -173,10 +175,10 @@ void test_file_sink() {
     record.measured_position[0] = static_cast<float>(cycle);
     CHECK(server.publish(record));
     if (cycle % 64 == 0) {
-      sleep_ms(1);  // let the drain thread keep up
+      sleep_milliseconds(1);  // let the drain thread keep up
     }
   }
-  sleep_ms(30);
+  sleep_milliseconds(30);
   sink.stop();
   CHECK_EQ(sink.records_written(), record_count);
 
@@ -461,7 +463,7 @@ void test_drain_once_refused_while_sink_thread_runs() {
   rc::telemetry::FileSink sink;
   CHECK(sink.open("/tmp/rc_test_drain", Provenance::collect()));
   sink.start(server, 1);
-  sleep_ms(5);
+  sleep_milliseconds(5);
   TelemetryRecord record{};
   for (int index = 0; index < 10; ++index) {
     CHECK(server.publish(record));
@@ -486,7 +488,7 @@ void test_observer_death_does_not_trip_watchdog() {
 
   const pid_t child = spawn_client(name, /*take_control=*/false);
   CHECK_MSG(child > 0, "fork failed");
-  sleep_ms(50);
+  sleep_milliseconds(50);
   ::kill(child, SIGKILL);
   int status = 0;
   ::waitpid(child, &status, 0);

@@ -47,7 +47,7 @@ This happens when the binary was built somewhere else — on another machine, in
 a container, in CI — or the tree was moved. gdb then prints:
 
 ```
-/home/user/robot_control/core/rt/src/rt_setup.cpp: No such file or directory.
+/home/user/robot_control/core/rt/src/realtime_setup.cpp: No such file or directory.
 ```
 
 gdb always tries the recorded absolute path **first**. Only when that file

@@ -25,5 +25,5 @@ define rc-rtstatus
   printf "scheduler_applied=%d memory_locked=%d affinity_applied=%d\n", $arg0.scheduler_applied, $arg0.memory_locked, $arg0.affinity_applied
 end
 document rc-rtstatus
-Print the three grant flags of an rc::rt::RtStatus: rc-rtstatus st
+Print the three grant flags of an rc::rt::RealtimeStatus: rc-rtstatus st
 end

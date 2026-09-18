@@ -68,10 +68,10 @@ std::size_t FileSink::drain_once(rc::bridge::BridgeServer& server) {
   if (worker_running.load(std::memory_order_acquire)) {
     return 0;  // the worker owns the consumer side; see header
   }
-  return drain_impl(server);
+  return drain_unchecked(server);
 }
 
-std::size_t FileSink::drain_impl(rc::bridge::BridgeServer& server) {
+std::size_t FileSink::drain_unchecked(rc::bridge::BridgeServer& server) {
   if (file == nullptr || buffer.empty()) {
     return 0;
   }
@@ -95,10 +95,10 @@ std::size_t FileSink::drain_impl(rc::bridge::BridgeServer& server) {
 
 void FileSink::run(rc::bridge::BridgeServer& server, unsigned poll_interval_milliseconds) {
   while (!stop_requested.load(std::memory_order_acquire)) {
-    drain_impl(server);
+    drain_unchecked(server);
     std::this_thread::sleep_for(std::chrono::milliseconds(poll_interval_milliseconds));
   }
-  drain_impl(server);  // final sweep: whatever the loop published on its way out
+  drain_unchecked(server);  // final sweep: whatever the loop published on its way out
   if (file != nullptr) {
     std::fflush(file);
   }

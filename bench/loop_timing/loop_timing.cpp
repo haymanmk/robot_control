@@ -115,7 +115,8 @@ Analysis analyse(const std::string& name, const std::vector<Sample>& samples, na
   }
   if (samples.size() > 1) {
     const std::int64_t ideal = period.count() * static_cast<std::int64_t>(samples.size() - 1);
-    analysis.drift_milliseconds = static_cast<double>((samples.back().wake - samples.front().wake).count() - ideal) / 1e6;
+    analysis.drift_milliseconds =
+        static_cast<double>((samples.back().wake - samples.front().wake).count() - ideal) / 1e6;
   }
   return analysis;
 }
@@ -171,7 +172,7 @@ int main(int argc, char** argv) {
   std::printf("  work      %g us busy-spin per cycle\n", work_microseconds);
 
   if (realtime_priority > 0 || cpu >= 0) {
-    rc::rt::RtOptions options;
+    rc::rt::RealtimeOptions options;
     options.priority = realtime_priority;
     options.lock_memory = true;
     options.cpu = cpu;

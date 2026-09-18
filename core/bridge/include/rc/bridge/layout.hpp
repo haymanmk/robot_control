@@ -20,7 +20,7 @@
 #include <cstdint>
 
 #include "rc/rt/seqlock.hpp"
-#include "rc/rt/spsc_ring.hpp"
+#include "rc/rt/single_producer_single_consumer_ring.hpp"
 #include "rc/telemetry/record.hpp"
 
 namespace rc::bridge {
@@ -129,10 +129,15 @@ struct BridgeHeader {
 /// The whole region. Placement-new'd by the server into the mapping; clients
 /// reinterpret the same bytes.
 struct BridgeRegion {
-  BridgeHeader header;  ///< identity, liveness and counters
-  rc::rt::Seqlock<rc::telemetry::StateSnapshot> snapshot;  ///< newest state, RT writes, clients read
-  rc::rt::SpscRing<rc::telemetry::TelemetryRecord, telemetry_ring_capacity> telemetry;  ///< RT -> drain thread
-  rc::rt::SpscRing<CommandRecord, command_ring_capacity> commands;  ///< controlling client -> RT
+  /// Identity, liveness and counters.
+  BridgeHeader header;
+  /// Newest state: RT writes, clients read.
+  rc::rt::Seqlock<rc::telemetry::StateSnapshot> snapshot;
+  /// RT -> drain thread.
+  rc::rt::SingleProducerSingleConsumerRing<rc::telemetry::TelemetryRecord, telemetry_ring_capacity>
+      telemetry;
+  /// Controlling client -> RT.
+  rc::rt::SingleProducerSingleConsumerRing<CommandRecord, command_ring_capacity> commands;
 };
 
 /// Default name; the leading slash is required by shm_open(3).

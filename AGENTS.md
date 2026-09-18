@@ -39,14 +39,14 @@ If you are unsure whether a function is on the cyclic path, assume it is.
 
 ## Things that look like bugs and are not
 
-- **`Seqlock` and `SpscRing` use fences and relaxed atomics on purpose.** Do
+- **`Seqlock` and `SingleProducerSingleConsumerRing` use fences and relaxed atomics on purpose.** Do
   not "fix" them with a mutex. Do not change a memory order without reading the
   file comment, which cites the paper the construction comes from.
-- **`SpscRing::push()` drops when full.** That is the policy: a stalled reader
+- **`SingleProducerSingleConsumerRing::push()` drops when full.** That is the policy: a stalled reader
   must not stall control. Do not add a retry loop.
 - **GCC's ThreadSanitizer warns that `atomic_thread_fence` is unsupported.**
   Expected; the seqlock is data-race-free by construction. See `core/README.md`.
-- **`RtStatus` reports refused real-time setup instead of failing.** Keep it
+- **`RealtimeStatus` reports refused real-time setup instead of failing.** Keep it
   that way. A process that silently runs without SCHED_FIFO produces timing
   numbers nobody should believe.
 

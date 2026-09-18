@@ -59,18 +59,18 @@ class FileSink {
   /// True while the drain thread started by start() is alive.
   [[nodiscard]] bool running() const noexcept { return worker_running.load(std::memory_order_acquire); }
   /// Path of the .bin file opened by open().
-  [[nodiscard]] const std::string& bin_path() const noexcept { return output_path; }
+  [[nodiscard]] const std::string& binary_path() const noexcept { return output_path; }
 
   /// Synchronous drain, for tests and for a final flush after stop().
   /// The telemetry ring is single-consumer: this refuses (returns 0) while the
-  /// background thread owns the ring, because two poppers on an SPSC ring
+  /// background thread owns the ring, because two poppers on a single-consumer ring
   /// corrupt the head index. Call stop() first.
   std::size_t drain_once(rc::bridge::BridgeServer& server);
 
  private:
   void run(rc::bridge::BridgeServer& server, unsigned poll_interval_milliseconds);
   /// The actual drain, used by both entry points. No ownership check.
-  std::size_t drain_impl(rc::bridge::BridgeServer& server);
+  std::size_t drain_unchecked(rc::bridge::BridgeServer& server);
 
   std::FILE* file = nullptr;
   std::string output_path;

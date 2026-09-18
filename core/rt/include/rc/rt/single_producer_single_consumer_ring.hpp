@@ -1,6 +1,6 @@
 #pragma once
 
-/// @file spsc_ring.hpp
+/// @file single_producer_single_consumer_ring.hpp
 /// Single-producer / single-consumer bounded queue. Lock-free, wait-free,
 /// allocation-free, and usable across processes in shared memory.
 ///
@@ -53,7 +53,7 @@ inline constexpr std::size_t cache_line_bytes = 64;
 /// allocation-free, and free of pointers so it works in shared memory mapped
 /// at different addresses. push() drops when full rather than blocking.
 template <typename T, std::size_t Capacity>
-class SpscRing {
+class SingleProducerSingleConsumerRing {
   static_assert(std::is_trivially_copyable_v<T>,
                 "shared-memory records must be trivially copyable: no pointers, "
                 "no std::string, no vtables");
@@ -94,14 +94,14 @@ class SpscRing {
   /// Approximate occupancy. Both counters are sampled independently, so this is
   /// a snapshot that may already be stale -- fine for diagnostics, never for
   /// control flow.
-  [[nodiscard]] std::size_t size_approx() const noexcept {
+  [[nodiscard]] std::size_t approximate_size() const noexcept {
     const std::uint64_t write_index = tail.load(std::memory_order_acquire);
     const std::uint64_t read_index = head.load(std::memory_order_acquire);
     return static_cast<std::size_t>(write_index - read_index);
   }
 
-  /// size_approx() == 0, with the same caveat.
-  [[nodiscard]] bool empty_approx() const noexcept { return size_approx() == 0; }
+  /// approximate_size() == 0, with the same caveat.
+  [[nodiscard]] bool approximately_empty() const noexcept { return approximate_size() == 0; }
 
   /// Total items ever published / consumed. Useful for detecting a stalled
   /// consumer without inferring it from occupancy.

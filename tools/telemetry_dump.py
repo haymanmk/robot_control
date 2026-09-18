@@ -40,7 +40,7 @@ MODES = {0: "idle", 1: "mit", 2: "pos_vel", 3: "velocity", 4: "stopping", 5: "ho
 
 
 def load(prefix: str):
-    meta_path, bin_path = Path(f"{prefix}.json"), Path(f"{prefix}.bin")
+    meta_path, binary_path = Path(f"{prefix}.json"), Path(f"{prefix}.bin")
     meta = json.loads(meta_path.read_text())
 
     declared = meta.get("record_dtype", {}).get("itemsize")
@@ -51,7 +51,7 @@ def load(prefix: str):
             f"and bump current_layout_version."
         )
 
-    raw = bin_path.read_bytes()
+    raw = binary_path.read_bytes()
     if len(raw) % RECORD_SIZE:
         # A partial tail means the writer was killed mid-record. Report it rather
         # than silently analysing a truncated run.

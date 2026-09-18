@@ -43,16 +43,16 @@ class LatencyHistogram {
   /// Samples recorded, including out-of-range ones.
   [[nodiscard]] std::uint64_t count() const noexcept { return sample_count; }
   /// Exact minimum sample; 0 if nothing was recorded.
-  [[nodiscard]] std::int64_t min_ns() const noexcept;
+  [[nodiscard]] std::int64_t minimum_nanoseconds() const noexcept;
   /// Exact maximum sample; 0 if nothing was recorded.
-  [[nodiscard]] std::int64_t max_ns() const noexcept;
+  [[nodiscard]] std::int64_t maximum_nanoseconds() const noexcept;
   /// Exact arithmetic mean; 0 if nothing was recorded.
-  [[nodiscard]] double mean_ns() const noexcept;
+  [[nodiscard]] double mean_nanoseconds() const noexcept;
 
-  /// Bucket-resolution percentile, e.g. percentile_ns(0.999).
+  /// Bucket-resolution percentile, e.g. percentile_nanoseconds(0.999).
   /// Quote p99.9 and max, never the mean: a control loop is not harmed by its
   /// average cycle, it is harmed by the worst one.
-  [[nodiscard]] std::int64_t percentile_ns(double fraction) const noexcept;
+  [[nodiscard]] std::int64_t percentile_nanoseconds(double fraction) const noexcept;
 
   /// Number of samples that fell outside [low_nanoseconds, high_nanoseconds].
   /// Non-zero means the histogram range was chosen badly and percentiles are

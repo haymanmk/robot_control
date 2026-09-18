@@ -36,14 +36,14 @@ void LatencyHistogram::record(std::int64_t value_nanoseconds) noexcept {
   ++buckets[static_cast<std::size_t>(bucket_index)];
 }
 
-std::int64_t LatencyHistogram::min_ns() const noexcept { return sample_count ? minimum : 0; }
-std::int64_t LatencyHistogram::max_ns() const noexcept { return sample_count ? maximum : 0; }
+std::int64_t LatencyHistogram::minimum_nanoseconds() const noexcept { return sample_count ? minimum : 0; }
+std::int64_t LatencyHistogram::maximum_nanoseconds() const noexcept { return sample_count ? maximum : 0; }
 
-double LatencyHistogram::mean_ns() const noexcept {
+double LatencyHistogram::mean_nanoseconds() const noexcept {
   return sample_count ? sum / static_cast<double>(sample_count) : 0.0;
 }
 
-std::int64_t LatencyHistogram::percentile_ns(double fraction) const noexcept {
+std::int64_t LatencyHistogram::percentile_nanoseconds(double fraction) const noexcept {
   if (sample_count == 0) {
     return 0;
   }
@@ -71,10 +71,10 @@ std::string LatencyHistogram::format_row() const {
   char row[160];
   std::snprintf(row, sizeof(row), "%-18s%9.1fu%9.1fu%9.1fu%9.1fu",
                 label.c_str(),
-                mean_ns() / 1000.0,
-                static_cast<double>(percentile_ns(0.99)) / 1000.0,
-                static_cast<double>(percentile_ns(0.999)) / 1000.0,
-                static_cast<double>(max_ns()) / 1000.0);
+                mean_nanoseconds() / 1000.0,
+                static_cast<double>(percentile_nanoseconds(0.99)) / 1000.0,
+                static_cast<double>(percentile_nanoseconds(0.999)) / 1000.0,
+                static_cast<double>(maximum_nanoseconds()) / 1000.0);
   return row;
 }
 
@@ -96,7 +96,8 @@ std::string LatencyHistogram::format_chart(int width) const {
     if (samples == 0) {
       continue;  // linear buckets over a wide range are mostly empty; skip them
     }
-    const double edge_microseconds = static_cast<double>(low_nanoseconds + bucket * span_nanoseconds / bucket_count) / 1000.0;
+    const double edge_microseconds =
+        static_cast<double>(low_nanoseconds + bucket * span_nanoseconds / bucket_count) / 1000.0;
     const int bar = static_cast<int>(static_cast<double>(width) *
                                      static_cast<double>(samples) / static_cast<double>(peak));
     out << "    ";

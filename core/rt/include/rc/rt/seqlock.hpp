@@ -3,7 +3,7 @@
 /// @file seqlock.hpp
 /// Single-writer / many-reader snapshot of one value. Wait-free for the writer.
 ///
-/// The queue in spsc_ring.hpp answers "give me every record in order". This
+/// The queue in single_producer_single_consumer_ring.hpp answers "give me every record in order". This
 /// answers a different question: **"what is the arm doing right now?"** A live
 /// plot, a UI, or a `ros2` state publisher wants the newest value and does not
 /// care what it missed. Handing that job to a queue means a slow reader either
@@ -58,14 +58,14 @@
 #include <cstring>
 #include <type_traits>
 
-#include "rc/rt/spsc_ring.hpp"  // cache_line_bytes
+#include "rc/rt/single_producer_single_consumer_ring.hpp"  // cache_line_bytes
 
 namespace rc::rt {
 
 /// Single-writer / many-reader snapshot of one trivially copyable value. The
 /// writer is wait-free and never blocks on readers; a reader retries if it
 /// observed a write in progress. Use it for "what is the arm doing right
-/// now", not for a stream of records (that is SpscRing).
+/// now", not for a stream of records (that is SingleProducerSingleConsumerRing).
 template <typename T>
 class Seqlock {
   static_assert(std::is_trivially_copyable_v<T>,
