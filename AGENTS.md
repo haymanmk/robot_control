@@ -88,9 +88,14 @@ arm does on a fault. Do not change any of this without an ADR:
   "why" prose goes in the `@file` block. Link to ADRs rather than repeating them.
 - Design decisions go in `docs/adr/` as a numbered ADR. Add one; do not edit
   history in an accepted ADR except to mark it superseded.
-- Formatting follows the existing files: 2-space indent, `snake_case`
-  functions, `PascalCase` types, `kConstant`, `member_` with a trailing
-  underscore. There is no formatter configured; match the file you are in.
+- Naming follows [docs/coding-style.md](docs/coding-style.md): `snake_case`
+  for variables, attributes, constants, functions and type aliases;
+  `CamelCase` for classes, structs and enums; whole words, never
+  abbreviations. A leading or trailing `_` is allowed only to resolve an
+  ambiguity such as a parameter shadowing a member. Older code still uses
+  `kConstant` and `member_` everywhere; do not copy that style, and rename as
+  you touch it. Formatting is 2-space indent with no formatter configured;
+  match the file you are in.
 
 ## Before any motion on the real arm
 
