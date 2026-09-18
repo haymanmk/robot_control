@@ -78,7 +78,7 @@ class BridgeServer {
 
   /// Drain queued telemetry, e.g. from the file-sink thread.
   /// @return number of records written into @p out.
-  [[nodiscard]] std::size_t drain(rc::telemetry::TelemetryRecord* out, std::size_t max) noexcept;
+  [[nodiscard]] std::size_t drain(rc::telemetry::TelemetryRecord* out, std::size_t max_records) noexcept;
 
   /// Records publish() dropped because the telemetry ring was full.
   [[nodiscard]] std::uint64_t telemetry_dropped() const noexcept;

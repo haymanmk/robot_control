@@ -31,7 +31,7 @@ enum class RegionError {
 };
 
 /// Short human-readable name for a RegionError, for logs.
-[[nodiscard]] const char* to_string(RegionError e) noexcept;
+[[nodiscard]] const char* to_string(RegionError error) noexcept;
 
 /// RAII wrapper over one mapping. Move-only.
 class SharedRegion {

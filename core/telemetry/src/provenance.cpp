@@ -24,29 +24,29 @@
 namespace rc::telemetry {
 namespace {
 
-std::string trim(std::string s) {
-  const auto not_space = [](unsigned char c) { return std::isspace(c) == 0; };
-  s.erase(s.begin(), std::find_if(s.begin(), s.end(), not_space));
-  s.erase(std::find_if(s.rbegin(), s.rend(), not_space).base(), s.end());
-  return s;
+std::string trim(std::string text) {
+  const auto not_space = [](unsigned char character) { return std::isspace(character) == 0; };
+  text.erase(text.begin(), std::find_if(text.begin(), text.end(), not_space));
+  text.erase(std::find_if(text.rbegin(), text.rend(), not_space).base(), text.end());
+  return text;
 }
 
 /// First line of a sysfs/procfs file, or "" if unreadable. Absence is normal
 /// (no cpufreq on a VM, no NVIDIA driver) and must not be an error.
 std::string read_first_line(const char* path) {
-  std::ifstream f(path);
-  if (!f) {
+  std::ifstream file(path);
+  if (!file) {
     return {};
   }
   std::string line;
-  std::getline(f, line);
+  std::getline(file, line);
   return trim(line);
 }
 
 std::string read_cpu_model() {
-  std::ifstream f("/proc/cpuinfo");
+  std::ifstream file("/proc/cpuinfo");
   std::string line;
-  while (std::getline(f, line)) {
+  while (std::getline(file, line)) {
     const auto colon = line.find(':');
     if (colon == std::string::npos) {
       continue;
@@ -88,31 +88,31 @@ std::string detect_preempt_model(const std::string& kernel_version) {
 }
 
 std::string iso8601_utc_now() {
-  const std::time_t t = std::time(nullptr);
-  std::tm tm{};
-  gmtime_r(&t, &tm);
-  char buf[32];
-  std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
-  return buf;
+  const std::time_t now = std::time(nullptr);
+  std::tm calendar{};
+  gmtime_r(&now, &calendar);
+  char stamp[32];
+  std::strftime(stamp, sizeof(stamp), "%Y-%m-%dT%H:%M:%SZ", &calendar);
+  return stamp;
 }
 
-std::string json_escape(const std::string& s) {
+std::string json_escape(const std::string& text) {
   std::string out;
-  out.reserve(s.size() + 8);
-  for (const char c : s) {
-    switch (c) {
+  out.reserve(text.size() + 8);
+  for (const char character : text) {
+    switch (character) {
       case '"': out += "\\\""; break;
       case '\\': out += "\\\\"; break;
       case '\n': out += "\\n"; break;
       case '\r': out += "\\r"; break;
       case '\t': out += "\\t"; break;
       default:
-        if (static_cast<unsigned char>(c) < 0x20) {
-          char buf[8];
-          std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned>(c));
-          out += buf;
+        if (static_cast<unsigned char>(character) < 0x20) {
+          char escaped[8];
+          std::snprintf(escaped, sizeof(escaped), "\\u%04x", static_cast<unsigned>(character));
+          out += escaped;
         } else {
-          out += c;
+          out += character;
         }
     }
   }
@@ -122,125 +122,125 @@ std::string json_escape(const std::string& s) {
 }  // namespace
 
 Provenance Provenance::collect() {
-  Provenance p;
+  Provenance provenance;
 
-  p.git_sha = RC_GIT_SHA;
-  p.git_dirty = RC_GIT_DIRTY;
-  p.build_type = RC_BUILD_TYPE;
-  p.compiler = __VERSION__;
-  p.build_time = __DATE__ " " __TIME__;
+  provenance.git_sha = RC_GIT_SHA;
+  provenance.git_dirty = RC_GIT_DIRTY;
+  provenance.build_type = RC_BUILD_TYPE;
+  provenance.compiler = __VERSION__;
+  provenance.build_time = __DATE__ " " __TIME__;
 
-  utsname u{};
-  if (::uname(&u) == 0) {
-    p.hostname = u.nodename;
-    p.kernel_release = u.release;
-    p.kernel_version = u.version;
+  utsname system{};
+  if (::uname(&system) == 0) {
+    provenance.hostname = system.nodename;
+    provenance.kernel_release = system.release;
+    provenance.kernel_version = system.version;
   }
-  p.preempt_model = detect_preempt_model(p.kernel_version);
+  provenance.preempt_model = detect_preempt_model(provenance.kernel_version);
   // /sys/kernel/realtime is the authoritative marker where it exists.
-  p.realtime_kernel =
-      (read_first_line("/sys/kernel/realtime") == "1") || (p.preempt_model == "PREEMPT_RT");
+  provenance.realtime_kernel =
+      (read_first_line("/sys/kernel/realtime") == "1") || (provenance.preempt_model == "PREEMPT_RT");
 
-  p.cpu_model = read_cpu_model();
-  const long n = ::sysconf(_SC_NPROCESSORS_ONLN);
-  p.cpu_count = n > 0 ? static_cast<unsigned>(n) : 0;
-  p.cpu_governor = read_first_line("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor");
-  p.isolated_cpus = read_first_line("/sys/devices/system/cpu/isolated");
-  p.nohz_full = read_first_line("/sys/devices/system/cpu/nohz_full");
+  provenance.cpu_model = read_cpu_model();
+  const long processors = ::sysconf(_SC_NPROCESSORS_ONLN);
+  provenance.cpu_count = processors > 0 ? static_cast<unsigned>(processors) : 0;
+  provenance.cpu_governor = read_first_line("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor");
+  provenance.isolated_cpus = read_first_line("/sys/devices/system/cpu/isolated");
+  provenance.nohz_full = read_first_line("/sys/devices/system/cpu/nohz_full");
 
-  p.nvidia_driver = read_nvidia_driver();
+  provenance.nvidia_driver = read_nvidia_driver();
 
-  rlimit rl{};
-  auto lim = [](rlim_t v) -> std::string {
-    if (v == RLIM_INFINITY) return "unlimited";
-    char b[32];
-    std::snprintf(b, sizeof(b), "%.1fMiB", static_cast<double>(v) / 1048576.0);
-    return b;
+  rlimit limit{};
+  auto describe = [](rlim_t value) -> std::string {
+    if (value == RLIM_INFINITY) return "unlimited";
+    char text[32];
+    std::snprintf(text, sizeof(text), "%.1fMiB", static_cast<double>(value) / 1048576.0);
+    return text;
   };
-  if (::getrlimit(RLIMIT_MEMLOCK, &rl) == 0) {
-    p.memlock_limit = lim(rl.rlim_cur) + "/" + lim(rl.rlim_max);
+  if (::getrlimit(RLIMIT_MEMLOCK, &limit) == 0) {
+    provenance.memlock_limit = describe(limit.rlim_cur) + "/" + describe(limit.rlim_max);
   }
-  if (::getrlimit(RLIMIT_RTPRIO, &rl) == 0) {
-    p.rtprio_limit = rl.rlim_max == RLIM_INFINITY ? "99" : std::to_string(rl.rlim_max);
+  if (::getrlimit(RLIMIT_RTPRIO, &limit) == 0) {
+    provenance.rtprio_limit = limit.rlim_max == RLIM_INFINITY ? "99" : std::to_string(limit.rlim_max);
   }
-  p.wall_clock = iso8601_utc_now();
-  return p;
+  provenance.wall_clock = iso8601_utc_now();
+  return provenance;
 }
 
 std::string Provenance::to_json() const {
-  std::ostringstream os;
-  const auto s = [](const std::string& v) { return '"' + json_escape(v) + '"'; };
-  os << "{\n";
-  os << "  \"build\": {\n";
-  os << "    \"git_sha\": " << s(git_sha) << ",\n";
-  os << "    \"git_state\": " << s(git_dirty) << ",\n";
-  os << "    \"build_type\": " << s(build_type) << ",\n";
-  os << "    \"compiler\": " << s(compiler) << ",\n";
-  os << "    \"built_at\": " << s(build_time) << "\n";
-  os << "  },\n";
-  os << "  \"machine\": {\n";
-  os << "    \"hostname\": " << s(hostname) << ",\n";
-  os << "    \"kernel_release\": " << s(kernel_release) << ",\n";
-  os << "    \"preempt_model\": " << s(preempt_model) << ",\n";
-  os << "    \"realtime_kernel\": " << (realtime_kernel ? "true" : "false") << ",\n";
-  os << "    \"cpu_model\": " << s(cpu_model) << ",\n";
-  os << "    \"cpu_count\": " << cpu_count << ",\n";
-  os << "    \"cpu_governor\": " << s(cpu_governor) << ",\n";
-  os << "    \"isolated_cpus\": " << s(isolated_cpus) << ",\n";
-  os << "    \"nohz_full\": " << s(nohz_full) << ",\n";
-  os << "    \"memlock_limit\": " << s(memlock_limit) << ",\n";
-  os << "    \"rtprio_limit\": " << s(rtprio_limit) << ",\n";
-  os << "    \"nvidia_driver\": " << s(nvidia_driver) << ",\n";
-  os << "    \"gpu_workload_running\": " << (gpu_workload_running ? "true" : "false") << "\n";
-  os << "  },\n";
-  os << "  \"run\": {\n";
-  os << "    \"wall_clock\": " << s(wall_clock) << ",\n";
-  os << "    \"label\": " << s(label) << ",\n";
-  os << "    \"rt_notes\": " << s(rt_notes) << ",\n";
-  os << "    \"can_interface\": " << s(can_interface) << ",\n";
-  os << "    \"can_bitrate\": " << can_bitrate << ",\n";
-  os << "    \"control_rate_hz\": " << control_rate_hz << "\n";
-  os << "  }\n";
-  os << "}\n";
-  return os.str();
+  std::ostringstream out;
+  const auto quoted = [](const std::string& value) { return '"' + json_escape(value) + '"'; };
+  out << "{\n";
+  out << "  \"build\": {\n";
+  out << "    \"git_sha\": " << quoted(git_sha) << ",\n";
+  out << "    \"git_state\": " << quoted(git_dirty) << ",\n";
+  out << "    \"build_type\": " << quoted(build_type) << ",\n";
+  out << "    \"compiler\": " << quoted(compiler) << ",\n";
+  out << "    \"built_at\": " << quoted(build_time) << "\n";
+  out << "  },\n";
+  out << "  \"machine\": {\n";
+  out << "    \"hostname\": " << quoted(hostname) << ",\n";
+  out << "    \"kernel_release\": " << quoted(kernel_release) << ",\n";
+  out << "    \"preempt_model\": " << quoted(preempt_model) << ",\n";
+  out << "    \"realtime_kernel\": " << (realtime_kernel ? "true" : "false") << ",\n";
+  out << "    \"cpu_model\": " << quoted(cpu_model) << ",\n";
+  out << "    \"cpu_count\": " << cpu_count << ",\n";
+  out << "    \"cpu_governor\": " << quoted(cpu_governor) << ",\n";
+  out << "    \"isolated_cpus\": " << quoted(isolated_cpus) << ",\n";
+  out << "    \"nohz_full\": " << quoted(nohz_full) << ",\n";
+  out << "    \"memlock_limit\": " << quoted(memlock_limit) << ",\n";
+  out << "    \"rtprio_limit\": " << quoted(rtprio_limit) << ",\n";
+  out << "    \"nvidia_driver\": " << quoted(nvidia_driver) << ",\n";
+  out << "    \"gpu_workload_running\": " << (gpu_workload_running ? "true" : "false") << "\n";
+  out << "  },\n";
+  out << "  \"run\": {\n";
+  out << "    \"wall_clock\": " << quoted(wall_clock) << ",\n";
+  out << "    \"label\": " << quoted(label) << ",\n";
+  out << "    \"rt_notes\": " << quoted(rt_notes) << ",\n";
+  out << "    \"can_interface\": " << quoted(can_interface) << ",\n";
+  out << "    \"can_bitrate\": " << can_bitrate << ",\n";
+  out << "    \"control_rate_hz\": " << control_rate_hz << "\n";
+  out << "  }\n";
+  out << "}\n";
+  return out.str();
 }
 
 std::string Provenance::to_summary() const {
-  std::ostringstream os;
-  os << "  build     " << git_sha << " (" << git_dirty << "), " << build_type << '\n';
-  os << "  kernel    " << kernel_release << "  [" << preempt_model << "]\n";
-  os << "  cpu       " << cpu_model << " x" << cpu_count;
+  std::ostringstream out;
+  out << "  build     " << git_sha << " (" << git_dirty << "), " << build_type << '\n';
+  out << "  kernel    " << kernel_release << "  [" << preempt_model << "]\n";
+  out << "  cpu       " << cpu_model << " x" << cpu_count;
   if (!cpu_governor.empty()) {
-    os << ", governor=" << cpu_governor;
+    out << ", governor=" << cpu_governor;
   }
-  os << '\n';
+  out << '\n';
   if (!isolated_cpus.empty()) {
-    os << "  isolated  " << isolated_cpus << '\n';
+    out << "  isolated  " << isolated_cpus << '\n';
   }
-  os << "  limits    memlock " << memlock_limit << ", rtprio " << rtprio_limit << '\n';
+  out << "  limits    memlock " << memlock_limit << ", rtprio " << rtprio_limit << '\n';
   if (!nvidia_driver.empty()) {
-    os << "  gpu       " << nvidia_driver
+    out << "  gpu       " << nvidia_driver
        << (gpu_workload_running ? "  [inference RUNNING]" : "  [idle]") << '\n';
   }
-  return os.str();
+  return out.str();
 }
 
 bool Provenance::suitable_as_baseline(std::string& why_not) const {
-  std::ostringstream os;
+  std::ostringstream out;
   bool ok = true;
   if (git_dirty != "clean") {
-    os << "working tree is " << git_dirty << " (baseline would not be reproducible); ";
+    out << "working tree is " << git_dirty << " (baseline would not be reproducible); ";
     ok = false;
   }
   if (git_sha == "unknown") {
-    os << "git SHA unknown; ";
+    out << "git SHA unknown; ";
     ok = false;
   }
   if (build_type != "RelWithDebInfo" && build_type != "Release") {
-    os << "build type is " << build_type << " (timing from a debug build is fiction); ";
+    out << "build type is " << build_type << " (timing from a debug build is fiction); ";
     ok = false;
   }
-  why_not = os.str();
+  why_not = out.str();
   return ok;
 }
 

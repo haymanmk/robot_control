@@ -41,11 +41,11 @@ void test_spsc_basic() {
 void test_spsc_wraparound() {
   SpscRing<std::uint64_t, 8> ring;
   std::uint64_t out = 0;
-  for (std::uint64_t i = 0; i < 10'000; ++i) {
-    CHECK(ring.push(i));
+  for (std::uint64_t value = 0; value < 10'000; ++value) {
+    CHECK(ring.push(value));
     CHECK(ring.pop(out));
-    if (out != i) {
-      CHECK_EQ(out, i);
+    if (out != value) {
+      CHECK_EQ(out, value);
       return;  // one failure message is enough
     }
   }
@@ -61,8 +61,8 @@ void test_spsc_concurrent() {
   std::atomic<bool> producer_done{false};
 
   std::thread producer([&] {
-    for (std::uint64_t i = 0; i < kCount; ++i) {
-      while (!ring.push(i)) {
+    for (std::uint64_t value = 0; value < kCount; ++value) {
+      while (!ring.push(value)) {
         std::this_thread::yield();  // test code may spin; the RT path must not
       }
     }
@@ -90,10 +90,10 @@ void test_spsc_concurrent() {
 }
 
 struct Wide {
-  std::uint64_t a, b, c, d, e, f, g, h;
+  std::uint64_t word0, word1, word2, word3, word4, word5, word6, word7;
   [[nodiscard]] bool consistent() const noexcept {
-    return b == a + 1 && c == a + 2 && d == a + 3 && e == a + 4 && f == a + 5 && g == a + 6 &&
-           h == a + 7;
+    return word1 == word0 + 1 && word2 == word0 + 2 && word3 == word0 + 3 && word4 == word0 + 4 &&
+           word5 == word0 + 5 && word6 == word0 + 6 && word7 == word0 + 7;
   }
 };
 
@@ -111,8 +111,9 @@ void test_seqlock_concurrent() {
   // pre-first-write reads as tearing and blamed the seqlock -- a reminder that
   // a failing concurrency test is as likely to be a bad oracle as a bad lock.
   std::thread writer([&] {
-    for (std::uint64_t i = 1; !stop.load(std::memory_order_acquire); ++i) {
-      lock.store(Wide{i, i + 1, i + 2, i + 3, i + 4, i + 5, i + 6, i + 7});
+    for (std::uint64_t stamp = 1; !stop.load(std::memory_order_acquire); ++stamp) {
+      lock.store(Wide{stamp, stamp + 1, stamp + 2, stamp + 3, stamp + 4, stamp + 5, stamp + 6,
+                      stamp + 7});
     }
   });
 
@@ -122,7 +123,7 @@ void test_seqlock_concurrent() {
 
   std::uint64_t first_seen = 0;
   std::uint64_t last_seen = 0;
-  for (int i = 0; i < 300'000; ++i) {
+  for (int attempt = 0; attempt < 300'000; ++attempt) {
     Wide value{};
     if (lock.load(value)) {
       reads.fetch_add(1, std::memory_order_relaxed);
@@ -130,9 +131,9 @@ void test_seqlock_concurrent() {
         torn.fetch_add(1, std::memory_order_relaxed);
       }
       if (first_seen == 0) {
-        first_seen = value.a;
+        first_seen = value.word0;
       }
-      last_seen = value.a;
+      last_seen = value.word0;
     }
   }
   stop.store(true, std::memory_order_release);
@@ -155,7 +156,7 @@ void test_seqlock_generation() {
   CHECK_EQ(lock.generation(), 1u);
   Wide out{};
   CHECK(lock.load(out));
-  CHECK_EQ(out.a, 1u);
+  CHECK_EQ(out.word0, 1u);
   CHECK(out.consistent());
 }
 

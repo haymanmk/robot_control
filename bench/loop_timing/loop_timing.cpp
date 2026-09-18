@@ -49,11 +49,11 @@ struct Sample {
 std::vector<Sample> run_relative(std::uint64_t cycles, Nanos period, Nanos work) {
   std::vector<Sample> out;
   out.reserve(cycles);
-  for (std::uint64_t n = 0; n < cycles; ++n) {
-    const Nanos t0 = monotonic_now();
-    out.push_back({t0});
+  for (std::uint64_t cycle = 0; cycle < cycles; ++cycle) {
+    const Nanos start = monotonic_now();
+    out.push_back({start});
     busy_for(work);
-    const Nanos remaining = period - (monotonic_now() - t0);
+    const Nanos remaining = period - (monotonic_now() - start);
     if (remaining > Nanos::zero()) {
       rc::rt::sleep_for(remaining);
     }
@@ -67,10 +67,10 @@ std::vector<Sample> run_absolute_relative_sleep(std::uint64_t cycles, Nanos peri
   std::vector<Sample> out;
   out.reserve(cycles);
   const Nanos origin = monotonic_now();
-  for (std::uint64_t n = 0; n < cycles; ++n) {
+  for (std::uint64_t cycle = 0; cycle < cycles; ++cycle) {
     out.push_back({monotonic_now()});
     busy_for(work);
-    const Nanos deadline = origin + period * static_cast<std::int64_t>(n + 1);
+    const Nanos deadline = origin + period * static_cast<std::int64_t>(cycle + 1);
     rc::rt::sleep_for(deadline - monotonic_now());
   }
   return out;
@@ -81,11 +81,11 @@ std::vector<Sample> run_absolute_relative_sleep(std::uint64_t cycles, Nanos peri
 std::vector<Sample> run_clock_nanosleep(std::uint64_t cycles, Nanos period, Nanos work) {
   std::vector<Sample> out;
   out.reserve(cycles);
-  CyclicConfig cfg;
-  cfg.period = period;
-  cfg.rt.priority = 0;       // measured separately by the caller's --rt
-  cfg.rt.lock_memory = false;
-  CyclicTask task(cfg);
+  CyclicConfig config;
+  config.period = period;
+  config.rt.priority = 0;       // measured separately by the caller's --rt
+  config.rt.lock_memory = false;
+  CyclicTask task(config);
   task.run(cycles, [&](std::uint64_t, Nanos) {
     out.push_back({monotonic_now()});
     busy_for(work);
@@ -100,27 +100,27 @@ struct Analysis {
   std::uint64_t overruns = 0;
 };
 
-Analysis analyse(const std::string& name, const std::vector<Sample>& s, Nanos period) {
+Analysis analyse(const std::string& name, const std::vector<Sample>& samples, Nanos period) {
   // +/- half a period with 100 buckets gives ~20 us resolution at 500 Hz.
   // Outliers beyond that are counted as out-of-range and reported below; max
   // is tracked exactly either way.
-  Analysis a{name, LatencyHistogram(name, -period.count() / 2, period.count() / 2, 100), 0.0, 0};
+  Analysis analysis{name, LatencyHistogram(name, -period.count() / 2, period.count() / 2, 100), 0.0, 0};
   const std::int64_t threshold = period.count() / 10;
-  for (std::size_t i = 1; i < s.size(); ++i) {
-    const std::int64_t err = (s[i].wake - s[i - 1].wake - period).count();
-    a.period_error.record(err);
-    if (err > threshold || err < -threshold) {
-      ++a.overruns;
+  for (std::size_t index = 1; index < samples.size(); ++index) {
+    const std::int64_t error = (samples[index].wake - samples[index - 1].wake - period).count();
+    analysis.period_error.record(error);
+    if (error > threshold || error < -threshold) {
+      ++analysis.overruns;
     }
   }
-  if (s.size() > 1) {
-    const std::int64_t ideal = period.count() * static_cast<std::int64_t>(s.size() - 1);
-    a.drift_ms = static_cast<double>((s.back().wake - s.front().wake).count() - ideal) / 1e6;
+  if (samples.size() > 1) {
+    const std::int64_t ideal = period.count() * static_cast<std::int64_t>(samples.size() - 1);
+    analysis.drift_ms = static_cast<double>((samples.back().wake - samples.front().wake).count() - ideal) / 1e6;
   }
-  return a;
+  return analysis;
 }
 
-[[noreturn]] void usage(const char* argv0, int code) {
+[[noreturn]] void usage(const char* program, int code) {
   std::printf(
       "usage: %s [--rate HZ] [--seconds S] [--work-us US] [--rt PRIO] [--cpu N] [--only NAME]\n"
       "\n"
@@ -130,59 +130,59 @@ Analysis analyse(const std::string& name, const std::vector<Sample>& s, Nanos pe
       "  --rt PRIO  request SCHED_FIFO at PRIO and mlockall (needs privileges)\n"
       "  --cpu N    pin to CPU N\n"
       "  --only     run one of: relative-sleep, absolute-sleep, clock-nanosleep\n",
-      argv0);
+      program);
   std::exit(code);
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-  double rate_hz = 500.0;
+  double rate_hertz = 500.0;
   double seconds = 10.0;
-  double work_us = 400.0;
-  int rt_priority = 0;
+  double work_microseconds = 400.0;
+  int realtime_priority = 0;
   int cpu = -1;
   std::string only;
 
-  for (int i = 1; i < argc; ++i) {
-    const std::string arg = argv[i];
+  for (int index = 1; index < argc; ++index) {
+    const std::string argument = argv[index];
     auto next = [&]() -> const char* {
-      if (i + 1 >= argc) usage(argv[0], 2);
-      return argv[++i];
+      if (index + 1 >= argc) usage(argv[0], 2);
+      return argv[++index];
     };
-    if (arg == "--rate") rate_hz = std::atof(next());
-    else if (arg == "--seconds") seconds = std::atof(next());
-    else if (arg == "--work-us") work_us = std::atof(next());
-    else if (arg == "--rt") rt_priority = std::atoi(next());
-    else if (arg == "--cpu") cpu = std::atoi(next());
-    else if (arg == "--only") only = next();
-    else if (arg == "-h" || arg == "--help") usage(argv[0], 0);
+    if (argument == "--rate") rate_hertz = std::atof(next());
+    else if (argument == "--seconds") seconds = std::atof(next());
+    else if (argument == "--work-us") work_microseconds = std::atof(next());
+    else if (argument == "--rt") realtime_priority = std::atoi(next());
+    else if (argument == "--cpu") cpu = std::atoi(next());
+    else if (argument == "--only") only = next();
+    else if (argument == "-h" || argument == "--help") usage(argv[0], 0);
     else usage(argv[0], 2);
   }
 
-  const auto period = Nanos{static_cast<std::int64_t>(1e9 / rate_hz)};
-  const auto work = Nanos{static_cast<std::int64_t>(work_us * 1000.0)};
-  const auto cycles = static_cast<std::uint64_t>(seconds * rate_hz);
+  const auto period = Nanos{static_cast<std::int64_t>(1e9 / rate_hertz)};
+  const auto work = Nanos{static_cast<std::int64_t>(work_microseconds * 1000.0)};
+  const auto cycles = static_cast<std::uint64_t>(seconds * rate_hertz);
 
   std::printf("Lab 01 (C++) -- control loop timing\n");
-  std::printf("  rate      %g Hz  (period %.1f us)\n", rate_hz,
+  std::printf("  rate      %g Hz  (period %.1f us)\n", rate_hertz,
               static_cast<double>(period.count()) / 1000.0);
   std::printf("  cycles    %lu per strategy (%g s)\n", static_cast<unsigned long>(cycles), seconds);
-  std::printf("  work      %g us busy-spin per cycle\n", work_us);
+  std::printf("  work      %g us busy-spin per cycle\n", work_microseconds);
 
-  if (rt_priority > 0 || cpu >= 0) {
-    rc::rt::RtOptions opts;
-    opts.priority = rt_priority;
-    opts.lock_memory = true;
-    opts.cpu = cpu;
-    const auto status = rc::rt::apply_realtime(opts);
+  if (realtime_priority > 0 || cpu >= 0) {
+    rc::rt::RtOptions options;
+    options.priority = realtime_priority;
+    options.lock_memory = true;
+    options.cpu = cpu;
+    const auto status = rc::rt::apply_realtime(options);
     std::printf("%s", status.format().c_str());
   }
   std::printf("\n");
 
   struct Strategy {
     const char* name;
-    std::vector<Sample> (*fn)(std::uint64_t, Nanos, Nanos);
+    std::vector<Sample> (*run)(std::uint64_t, Nanos, Nanos);
   };
   const Strategy strategies[] = {
       {"relative-sleep", run_relative},
@@ -191,11 +191,11 @@ int main(int argc, char** argv) {
   };
 
   std::vector<Analysis> results;
-  for (const auto& s : strategies) {
-    if (!only.empty() && only != s.name) continue;
-    std::printf("running %s ... ", s.name);
+  for (const auto& strategy : strategies) {
+    if (!only.empty() && only != strategy.name) continue;
+    std::printf("running %s ... ", strategy.name);
     std::fflush(stdout);
-    results.push_back(analyse(s.name, s.fn(cycles, period, work), period));
+    results.push_back(analyse(strategy.name, strategy.run(cycles, period, work), period));
     std::printf("done\n");
   }
   if (results.empty()) usage(argv[0], 2);
@@ -203,9 +203,9 @@ int main(int argc, char** argv) {
   std::printf("\n%-18s%10s%10s%10s%10s%12s%10s\n", "strategy", "mean", "p99", "p99.9", "max",
               "drift", "overruns");
   std::printf("%s\n", std::string(80, '-').c_str());
-  for (const auto& r : results) {
-    std::printf("%s%11.2fm%10lu\n", r.period_error.format_row().c_str(), r.drift_ms,
-                static_cast<unsigned long>(r.overruns));
+  for (const auto& result : results) {
+    std::printf("%s%11.2fm%10lu\n", result.period_error.format_row().c_str(), result.drift_ms,
+                static_cast<unsigned long>(result.overruns));
   }
   std::printf(
       "\n  mean/p99/max are per-cycle period error in microseconds (us).\n"
@@ -213,13 +213,13 @@ int main(int argc, char** argv) {
       "  overruns are cycles off nominal by more than 10%% (%.0f us).\n\n",
       static_cast<double>(period.count()) / 10000.0);
 
-  for (const auto& r : results) {
-    std::printf("  %s -- per-cycle period error distribution\n", r.name.c_str());
-    if (r.period_error.out_of_range() > 0) {
+  for (const auto& result : results) {
+    std::printf("  %s -- per-cycle period error distribution\n", result.name.c_str());
+    if (result.period_error.out_of_range() > 0) {
       std::printf("  (%lu samples outside the charted range; p99.9 may be clipped, max is exact)\n",
-                  static_cast<unsigned long>(r.period_error.out_of_range()));
+                  static_cast<unsigned long>(result.period_error.out_of_range()));
     }
-    std::printf("%s\n", r.period_error.format_chart().c_str());
+    std::printf("%s\n", result.period_error.format_chart().c_str());
   }
   return 0;
 }

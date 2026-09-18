@@ -17,13 +17,13 @@ bool BridgeClient::take_control() noexcept {
   if (holds_control_ && verify_control()) {
     return true;
   }
-  BridgeHeader& h = region_.get()->header;
+  BridgeHeader& header = region_.get()->header;
 
   // The PID is the token: unique among live processes, and it identifies who
   // holds control in a crash dump.
   const auto desired = static_cast<std::uint64_t>(::getpid());
   std::uint64_t expected = 0;
-  if (!h.control_token.compare_exchange_strong(expected, desired, std::memory_order_acq_rel,
+  if (!header.control_token.compare_exchange_strong(expected, desired, std::memory_order_acq_rel,
                                                std::memory_order_acquire)) {
     return false;  // someone else holds it -- and we must not touch the heartbeat
   }
@@ -55,10 +55,10 @@ void BridgeClient::release_control() noexcept {
   if (!region_.valid() || !holds_control_) {
     return;
   }
-  BridgeHeader& h = region_.get()->header;
+  BridgeHeader& header = region_.get()->header;
   std::uint64_t expected = token_;
   // Only clear our own token: a stale client must never release a successor's.
-  (void)h.control_token.compare_exchange_strong(expected, 0, std::memory_order_acq_rel,
+  (void)header.control_token.compare_exchange_strong(expected, 0, std::memory_order_acq_rel,
                                                 std::memory_order_acquire);
   holds_control_ = false;
   token_ = 0;
@@ -78,9 +78,9 @@ bool BridgeClient::send(CommandRecord& command) noexcept {
   // Commands carry their own contiguous sequence so the server can detect loss
   // by gaps; the heartbeat counter is a separate thing and advances on its own.
   command.sequence = ++command_seq_;
-  BridgeRegion& r = *region_.get();
-  if (!r.commands.push(command)) {
-    r.header.commands_rejected.fetch_add(1, std::memory_order_relaxed);
+  BridgeRegion& mapped = *region_.get();
+  if (!mapped.commands.push(command)) {
+    mapped.header.commands_rejected.fetch_add(1, std::memory_order_relaxed);
     return false;
   }
   heartbeat();  // sending is itself proof of life
@@ -103,10 +103,10 @@ bool BridgeClient::server_alive() noexcept {
   if (!region_.valid()) {
     return false;
   }
-  const std::uint64_t beat =
+  const std::uint64_t observed_beat =
       region_.get()->header.server_heartbeat.load(std::memory_order_acquire);
-  const bool advanced = beat != last_server_beat_;
-  last_server_beat_ = beat;
+  const bool advanced = observed_beat != last_server_beat_;
+  last_server_beat_ = observed_beat;
   return advanced;
 }
 

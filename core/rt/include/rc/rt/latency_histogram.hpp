@@ -29,13 +29,14 @@ namespace rc::rt {
 /// tracked exactly; percentiles have bucket resolution.
 class LatencyHistogram {
  public:
-  /// Linear buckets spanning [lo_ns, hi_ns]. Samples outside that range land in
-  /// dedicated underflow/overflow counters and still update min/max exactly.
-  LatencyHistogram(std::string name, std::int64_t lo_ns, std::int64_t hi_ns,
+  /// Linear buckets spanning [low_nanoseconds, high_nanoseconds]. Samples
+  /// outside that range land in dedicated underflow/overflow counters and still
+  /// update min/max exactly.
+  LatencyHistogram(std::string name, std::int64_t low_nanoseconds, std::int64_t high_nanoseconds,
                    std::size_t bucket_count = 64);
 
   /// Hot path. No allocation, no locks, no syscalls.
-  void record(std::int64_t value_ns) noexcept;
+  void record(std::int64_t value_nanoseconds) noexcept;
 
   /// Label given at construction; appears in format_row() and format_chart().
   [[nodiscard]] const std::string& name() const noexcept { return name_; }
@@ -51,11 +52,11 @@ class LatencyHistogram {
   /// Bucket-resolution percentile, e.g. percentile_ns(0.999).
   /// Quote p99.9 and max, never the mean: a control loop is not harmed by its
   /// average cycle, it is harmed by the worst one.
-  [[nodiscard]] std::int64_t percentile_ns(double p) const noexcept;
+  [[nodiscard]] std::int64_t percentile_ns(double fraction) const noexcept;
 
-  /// Number of samples that fell outside [lo_ns, hi_ns]. Non-zero means the
-  /// histogram range was chosen badly and percentiles are clipped -- always
-  /// check this before believing the output.
+  /// Number of samples that fell outside [low_nanoseconds, high_nanoseconds].
+  /// Non-zero means the histogram range was chosen badly and percentiles are
+  /// clipped -- always check this before believing the output.
   [[nodiscard]] std::uint64_t out_of_range() const noexcept { return underflow_ + overflow_; }
 
   /// One aligned line: name, mean, p99, p99.9, max (microseconds).

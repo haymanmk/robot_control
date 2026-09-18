@@ -19,27 +19,27 @@ namespace {
 
 constexpr std::uint64_t kUnlimited = UINT64_MAX;
 
-std::uint64_t rlim_to_u64(rlim_t v) noexcept {
-  return v == RLIM_INFINITY ? kUnlimited : static_cast<std::uint64_t>(v);
+std::uint64_t rlim_to_u64(rlim_t value) noexcept {
+  return value == RLIM_INFINITY ? kUnlimited : static_cast<std::uint64_t>(value);
 }
 
 std::string mib(std::uint64_t bytes) {
   if (bytes == kUnlimited) {
     return "unlimited";
   }
-  char buf[32];
-  std::snprintf(buf, sizeof(buf), "%.1f MiB", static_cast<double>(bytes) / 1048576.0);
-  return buf;
+  char text[32];
+  std::snprintf(text, sizeof(text), "%.1f MiB", static_cast<double>(bytes) / 1048576.0);
+  return text;
 }
 
 /// Parse "VmXxx:  1234 kB" lines from /proc/self/status.
 std::uint64_t proc_status_kb(const char* key) {
-  std::ifstream f("/proc/self/status");
+  std::ifstream status_file("/proc/self/status");
   std::string line;
-  const std::size_t klen = std::strlen(key);
-  while (std::getline(f, line)) {
-    if (line.compare(0, klen, key) == 0) {
-      return static_cast<std::uint64_t>(std::strtoull(line.c_str() + klen, nullptr, 10)) * 1024;
+  const std::size_t key_length = std::strlen(key);
+  while (std::getline(status_file, line)) {
+    if (line.compare(0, key_length, key) == 0) {
+      return static_cast<std::uint64_t>(std::strtoull(line.c_str() + key_length, nullptr, 10)) * 1024;
     }
   }
   return 0;
@@ -50,13 +50,13 @@ std::uint64_t proc_status_kb(const char* key) {
 /// container or a capability-dropped service can lack it, and then the limit
 /// applies -- and the headroom check must run.
 bool detect_cap_ipc_lock() {
-  std::ifstream f("/proc/self/status");
+  std::ifstream status_file("/proc/self/status");
   std::string line;
-  while (std::getline(f, line)) {
+  while (std::getline(status_file, line)) {
     if (line.compare(0, 7, "CapEff:") == 0) {
-      const unsigned long long caps = std::strtoull(line.c_str() + 7, nullptr, 16);
+      const unsigned long long capabilities = std::strtoull(line.c_str() + 7, nullptr, 16);
       constexpr int kCapIpcLock = 14;
-      return (caps >> kCapIpcLock) & 1ULL;
+      return (capabilities >> kCapIpcLock) & 1ULL;
     }
   }
   return false;
@@ -65,33 +65,33 @@ bool detect_cap_ipc_lock() {
 }  // namespace
 
 MemoryFigures MemoryFigures::read() {
-  MemoryFigures m;
-  rlimit rl{};
-  if (::getrlimit(RLIMIT_MEMLOCK, &rl) == 0) {
-    m.memlock_soft = rlim_to_u64(rl.rlim_cur);
-    m.memlock_hard = rlim_to_u64(rl.rlim_max);
+  MemoryFigures figures;
+  rlimit limit{};
+  if (::getrlimit(RLIMIT_MEMLOCK, &limit) == 0) {
+    figures.memlock_soft = rlim_to_u64(limit.rlim_cur);
+    figures.memlock_hard = rlim_to_u64(limit.rlim_max);
   }
-  if (::getrlimit(RLIMIT_RTPRIO, &rl) == 0) {
-    m.rtprio_hard = rlim_to_u64(rl.rlim_max);
+  if (::getrlimit(RLIMIT_RTPRIO, &limit) == 0) {
+    figures.rtprio_hard = rlim_to_u64(limit.rlim_max);
   }
-  m.vm_size = proc_status_kb("VmSize:");
-  m.vm_rss = proc_status_kb("VmRSS:");
-  m.vm_locked = proc_status_kb("VmLck:");
-  m.has_cap_ipc_lock = detect_cap_ipc_lock();
-  return m;
+  figures.vm_size = proc_status_kb("VmSize:");
+  figures.vm_rss = proc_status_kb("VmRSS:");
+  figures.vm_locked = proc_status_kb("VmLck:");
+  figures.has_cap_ipc_lock = detect_cap_ipc_lock();
+  return figures;
 }
 
 std::string MemoryFigures::format() const {
-  std::ostringstream os;
-  os << "  memlock   limit soft " << mib(memlock_soft) << ", hard " << mib(memlock_hard);
+  std::ostringstream out;
+  out << "  memlock   limit soft " << mib(memlock_soft) << ", hard " << mib(memlock_hard);
   if (has_cap_ipc_lock) {
-    os << "  (CAP_IPC_LOCK: limit does not apply)";
+    out << "  (CAP_IPC_LOCK: limit does not apply)";
   }
-  os << '\n';
-  os << "  memory    mapped " << mib(vm_size) << ", resident " << mib(vm_rss) << ", locked "
+  out << '\n';
+  out << "  memory    mapped " << mib(vm_size) << ", resident " << mib(vm_rss) << ", locked "
      << mib(vm_locked) << '\n';
-  os << "  rtprio    hard limit " << (rtprio_hard == kUnlimited ? 99 : rtprio_hard) << '\n';
-  return os.str();
+  out << "  rtprio    hard limit " << (rtprio_hard == kUnlimited ? 99 : rtprio_hard) << '\n';
+  return out.str();
 }
 
 std::vector<std::string> prepare_process(const ProcessTuning& tuning) noexcept {
@@ -114,33 +114,33 @@ std::vector<std::string> prepare_process(const ProcessTuning& tuning) noexcept {
     // glibc's default thread stack is RLIMIT_STACK, usually 8 MiB, fully locked
     // under MCL_FUTURE. Set a process-wide default for every thread created
     // after this point, std::thread included.
-    pthread_attr_t attr;
-    if (::pthread_attr_init(&attr) == 0) {
-      if (::pthread_attr_setstacksize(&attr, tuning.default_thread_stack) == 0 &&
-          ::pthread_setattr_default_np(&attr) == 0) {
+    pthread_attr_t attributes;
+    if (::pthread_attr_init(&attributes) == 0) {
+      if (::pthread_attr_setstacksize(&attributes, tuning.default_thread_stack) == 0 &&
+          ::pthread_setattr_default_np(&attributes) == 0) {
         notes.emplace_back("threads: default stack " + mib(tuning.default_thread_stack));
       } else {
         notes.emplace_back("threads: could not set default stack size");
       }
-      ::pthread_attr_destroy(&attr);
+      ::pthread_attr_destroy(&attributes);
     }
   }
   return notes;
 }
 
-bool RtStatus::fully_applied(const RtOptions& opts) const noexcept {
-  if (opts.priority > 0 && !scheduler_applied) return false;
-  if (opts.lock_memory && !memory_locked) return false;
-  if (opts.cpu >= 0 && !affinity_applied) return false;
+bool RtStatus::fully_applied(const RtOptions& options) const noexcept {
+  if (options.priority > 0 && !scheduler_applied) return false;
+  if (options.lock_memory && !memory_locked) return false;
+  if (options.cpu >= 0 && !affinity_applied) return false;
   return true;
 }
 
 std::string RtStatus::format() const {
-  std::ostringstream os;
-  for (const auto& n : notes) {
-    os << "  rt        " << n << '\n';
+  std::ostringstream out;
+  for (const auto& note : notes) {
+    out << "  rt        " << note << '\n';
   }
-  return os.str();
+  return out.str();
 }
 
 void prefault_stack(std::size_t bytes) noexcept {
@@ -157,30 +157,30 @@ void prefault_stack(std::size_t bytes) noexcept {
   // which is why this must run BEFORE mlockall(): on the main thread the stack
   // is mapped on demand, and growing a locked stack past RLIMIT_MEMLOCK is
   // SIGSEGV, not an error (docs/rt-setup.md).
-  volatile unsigned char* buf = static_cast<volatile unsigned char*>(alloca(bytes));
-  for (std::size_t i = 0; i < bytes; i += 4096) {
-    buf[i] = 0;
+  volatile unsigned char* stack = static_cast<volatile unsigned char*>(alloca(bytes));
+  for (std::size_t offset = 0; offset < bytes; offset += 4096) {
+    stack[offset] = 0;
   }
 }
 
-RtStatus apply_realtime(const RtOptions& opts) noexcept {
-  RtStatus st;
+RtStatus apply_realtime(const RtOptions& options) noexcept {
+  RtStatus status;
   MemoryFigures before = MemoryFigures::read();
 
-  if (opts.priority > 0) {
-    if (before.rtprio_hard != kUnlimited && static_cast<std::uint64_t>(opts.priority) > before.rtprio_hard) {
-      st.notes.emplace_back("SCHED_FIFO: priority " + std::to_string(opts.priority) +
+  if (options.priority > 0) {
+    if (before.rtprio_hard != kUnlimited && static_cast<std::uint64_t>(options.priority) > before.rtprio_hard) {
+      status.notes.emplace_back("SCHED_FIFO: priority " + std::to_string(options.priority) +
                             " exceeds RLIMIT_RTPRIO hard limit " +
                             std::to_string(before.rtprio_hard) +
                             " -- add '<user> - rtprio 99' to /etc/security/limits.conf and log in again");
     } else {
-      sched_param param{};
-      param.sched_priority = opts.priority;
-      if (::sched_setscheduler(0, SCHED_FIFO, &param) == 0) {
-        st.scheduler_applied = true;
-        st.notes.emplace_back("SCHED_FIFO priority " + std::to_string(opts.priority) + ": OK");
+      sched_param scheduling{};
+      scheduling.sched_priority = options.priority;
+      if (::sched_setscheduler(0, SCHED_FIFO, &scheduling) == 0) {
+        status.scheduler_applied = true;
+        status.notes.emplace_back("SCHED_FIFO priority " + std::to_string(options.priority) + ": OK");
       } else {
-        st.notes.emplace_back(std::string("SCHED_FIFO: FAILED (") + std::strerror(errno) +
+        status.notes.emplace_back(std::string("SCHED_FIFO: FAILED (") + std::strerror(errno) +
                               ") -- run as root, grant CAP_SYS_NICE, or raise RLIMIT_RTPRIO");
       }
     }
@@ -189,17 +189,17 @@ RtStatus apply_realtime(const RtOptions& opts) noexcept {
   // Touch the stack *before* locking: the pages are then part of VmSize when
   // we decide whether locking is safe, and locking never has to grow the stack
   // afterwards. (Growing a VM_LOCKED stack past RLIMIT_MEMLOCK is SIGSEGV.)
-  prefault_stack(opts.prefault_bytes);
+  prefault_stack(options.prefault_bytes);
   before = MemoryFigures::read();
 
-  if (opts.lock_memory) {
-    if (opts.raise_soft_memlock && before.memlock_soft < before.memlock_hard) {
-      rlimit rl{};
-      rl.rlim_cur = before.memlock_hard == kUnlimited ? RLIM_INFINITY
+  if (options.lock_memory) {
+    if (options.raise_soft_memlock && before.memlock_soft < before.memlock_hard) {
+      rlimit limit{};
+      limit.rlim_cur = before.memlock_hard == kUnlimited ? RLIM_INFINITY
                                                       : static_cast<rlim_t>(before.memlock_hard);
-      rl.rlim_max = rl.rlim_cur;
-      if (::setrlimit(RLIMIT_MEMLOCK, &rl) == 0) {
-        st.notes.emplace_back("memlock: raised soft limit " + mib(before.memlock_soft) +
+      limit.rlim_max = limit.rlim_cur;
+      if (::setrlimit(RLIMIT_MEMLOCK, &limit) == 0) {
+        status.notes.emplace_back("memlock: raised soft limit " + mib(before.memlock_soft) +
                               " -> " + mib(before.memlock_hard) + " (the hard limit)");
         before = MemoryFigures::read();
       }
@@ -209,26 +209,26 @@ RtStatus apply_realtime(const RtOptions& opts) noexcept {
     // page fault that exceeds the limit is fatal, not an error, and a process
     // that dies on its first heap or stack growth is worse than one that
     // reports honestly that it is running unlocked.
-    const std::uint64_t needed = before.vm_size + opts.headroom_bytes;
+    const std::uint64_t needed = before.vm_size + options.headroom_bytes;
     const bool limited = !before.has_cap_ipc_lock && before.memlock_soft != kUnlimited;
     if (limited && needed > before.memlock_soft) {
-      st.notes.emplace_back(
+      status.notes.emplace_back(
           "mlockall: REFUSED -- this process maps " + mib(before.vm_size) + " and needs " +
-          mib(opts.headroom_bytes) + " of headroom to grow, but RLIMIT_MEMLOCK is " +
+          mib(options.headroom_bytes) + " of headroom to grow, but RLIMIT_MEMLOCK is " +
           mib(before.memlock_soft) + " soft / " + mib(before.memlock_hard) +
           " hard. Locking anyway would succeed and then SIGSEGV on the next page fault. "
           "Raise the limit to at least " + mib(needed) + " (docs/rt-setup.md)");
     } else if (::mlockall(MCL_CURRENT | MCL_FUTURE) == 0) {
-      st.memory_locked = true;
+      status.memory_locked = true;
       const MemoryFigures after = MemoryFigures::read();
       std::string note = "mlockall(MCL_CURRENT|MCL_FUTURE): OK, " + mib(after.vm_locked) + " locked";
       if (limited) {
         note += ", " + mib(before.memlock_soft - after.vm_locked) + " headroom left";
       }
-      st.notes.emplace_back(note);
+      status.notes.emplace_back(note);
     } else {
-      const int err = errno;
-      st.notes.emplace_back(std::string("mlockall: FAILED (") + std::strerror(err) +
+      const int error_number = errno;
+      status.notes.emplace_back(std::string("mlockall: FAILED (") + std::strerror(error_number) +
                             ") -- this process maps " + mib(before.vm_size) +
                             " but RLIMIT_MEMLOCK is " + mib(before.memlock_soft) + " soft / " +
                             mib(before.memlock_hard) +
@@ -236,21 +236,21 @@ RtStatus apply_realtime(const RtOptions& opts) noexcept {
     }
   }
 
-  if (opts.cpu >= 0) {
-    cpu_set_t set;
-    CPU_ZERO(&set);
-    CPU_SET(opts.cpu, &set);
-    if (::sched_setaffinity(0, sizeof(set), &set) == 0) {
-      st.affinity_applied = true;
-      st.notes.emplace_back("affinity -> CPU " + std::to_string(opts.cpu) +
+  if (options.cpu >= 0) {
+    cpu_set_t cpus;
+    CPU_ZERO(&cpus);
+    CPU_SET(options.cpu, &cpus);
+    if (::sched_setaffinity(0, sizeof(cpus), &cpus) == 0) {
+      status.affinity_applied = true;
+      status.notes.emplace_back("affinity -> CPU " + std::to_string(options.cpu) +
                             ": OK (is it in isolcpus?)");
     } else {
-      st.notes.emplace_back(std::string("affinity: FAILED (") + std::strerror(errno) + ")");
+      status.notes.emplace_back(std::string("affinity: FAILED (") + std::strerror(errno) + ")");
     }
   }
 
-  st.memory = MemoryFigures::read();
-  return st;
+  status.memory = MemoryFigures::read();
+  return status;
 }
 
 }  // namespace rc::rt

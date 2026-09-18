@@ -29,15 +29,15 @@ namespace {
 
 constexpr std::uint32_t kPeriodNs = 1'000'000;  // 1 ms, to keep tests quick
 
-void sleep_ms(unsigned ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); }
+void sleep_ms(unsigned milliseconds) { std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds)); }
 
 void test_create_and_attach() {
   const std::string name = "/rc_test_attach";
   SharedRegion::unlink(name);
 
   BridgeServer server;
-  const RegionError err = server.open(name, kPeriodNs, /*lock_memory=*/false);
-  CHECK_MSG(err == RegionError::kOk, to_string(err));
+  const RegionError error = server.open(name, kPeriodNs, /*lock_memory=*/false);
+  CHECK_MSG(error == RegionError::kOk, to_string(error));
   CHECK(server.valid());
   CHECK(server.state() == ServerState::kIdle);
 
@@ -54,9 +54,9 @@ void test_create_and_attach() {
 void test_attach_without_server() {
   SharedRegion::unlink("/rc_test_absent");
   BridgeClient client;
-  const RegionError err = client.attach("/rc_test_absent");
-  CHECK_MSG(err == RegionError::kNotFound,
-            std::string("expected kNotFound, got: ") + to_string(err));
+  const RegionError error = client.attach("/rc_test_absent");
+  CHECK_MSG(error == RegionError::kNotFound,
+            std::string("expected kNotFound, got: ") + to_string(error));
 }
 
 void test_command_round_trip() {
@@ -69,13 +69,13 @@ void test_command_round_trip() {
   CHECK(client.attach(name) == RegionError::kOk);
   CHECK(client.take_control());
 
-  CommandRecord cmd{};
-  cmd.type = static_cast<std::uint32_t>(CommandType::kSetTarget);
-  cmd.joint_count = 6;
-  for (unsigned j = 0; j < 6; ++j) {
-    cmd.pos[j] = static_cast<float>(j) * 0.1f;
+  CommandRecord command{};
+  command.type = static_cast<std::uint32_t>(CommandType::kSetTarget);
+  command.joint_count = 6;
+  for (unsigned joint = 0; joint < 6; ++joint) {
+    command.pos[joint] = static_cast<float>(joint) * 0.1f;
   }
-  CHECK(client.send(cmd));
+  CHECK(client.send(command));
 
   CommandRecord got{};
   CHECK(server.poll_command(got));
@@ -86,8 +86,8 @@ void test_command_round_trip() {
 
   // Overflow must be reported, never silently dropped or blocking.
   bool rejected = false;
-  for (std::size_t i = 0; i < kCommandCapacity + 8; ++i) {
-    if (!client.send(cmd)) {
+  for (std::size_t attempt = 0; attempt < kCommandCapacity + 8; ++attempt) {
+    if (!client.send(command)) {
       rejected = true;
       break;
     }
@@ -106,11 +106,11 @@ void test_snapshot_round_trip() {
   BridgeClient client;
   CHECK(client.attach(name) == RegionError::kOk);
 
-  StateSnapshot snap{};
-  snap.cycle = 42;
-  snap.joint_count = 7;
-  snap.pos[2] = 1.25f;
-  server.publish_snapshot(snap);
+  StateSnapshot snapshot{};
+  snapshot.cycle = 42;
+  snapshot.joint_count = 7;
+  snapshot.pos[2] = 1.25f;
+  server.publish_snapshot(snapshot);
 
   StateSnapshot got{};
   CHECK(client.state(got));
@@ -128,14 +128,14 @@ void test_telemetry_drop_is_counted_not_blocking() {
   BridgeServer server;
   CHECK(server.open(name, kPeriodNs, false) == RegionError::kOk);
 
-  TelemetryRecord rec{};
+  TelemetryRecord record{};
   std::uint64_t pushed = 0;
   bool dropped = false;
   // Publish well past capacity with nobody draining. The RT side must keep
   // returning promptly -- a full ring is a dropped record, never a stall.
-  for (std::size_t i = 0; i < kTelemetryCapacity * 2; ++i) {
-    rec.cycle = i;
-    if (server.publish(rec)) {
+  for (std::size_t cycle = 0; cycle < kTelemetryCapacity * 2; ++cycle) {
+    record.cycle = cycle;
+    if (server.publish(record)) {
       ++pushed;
     } else {
       dropped = true;
@@ -156,23 +156,23 @@ void test_file_sink() {
   BridgeServer server;
   CHECK(server.open(name, kPeriodNs, false) == RegionError::kOk);
 
-  Provenance prov = Provenance::collect();
-  prov.label = "unit test";
-  prov.control_rate_hz = 1000.0;
+  Provenance provenance = Provenance::collect();
+  provenance.label = "unit test";
+  provenance.control_rate_hz = 1000.0;
 
   rc::telemetry::FileSink sink;
   const std::string prefix = "/tmp/rc_test_telemetry";
-  CHECK(sink.open(prefix, prov));
+  CHECK(sink.open(prefix, provenance));
   sink.start(server, /*poll_interval_ms=*/2);
 
   constexpr std::uint64_t kRecords = 500;
-  for (std::uint64_t i = 0; i < kRecords; ++i) {
-    TelemetryRecord rec{};
-    rec.cycle = i;
-    rec.joint_count = 7;
-    rec.meas_pos[0] = static_cast<float>(i);
-    CHECK(server.publish(rec));
-    if (i % 64 == 0) {
+  for (std::uint64_t cycle = 0; cycle < kRecords; ++cycle) {
+    TelemetryRecord record{};
+    record.cycle = cycle;
+    record.joint_count = 7;
+    record.meas_pos[0] = static_cast<float>(cycle);
+    CHECK(server.publish(record));
+    if (cycle % 64 == 0) {
       sleep_ms(1);  // let the drain thread keep up
     }
   }
@@ -182,18 +182,18 @@ void test_file_sink() {
 
   // The file must be exactly N fixed-size records: that is what lets numpy read
   // it with one fromfile() and no parser.
-  std::FILE* f = std::fopen((prefix + ".bin").c_str(), "rb");
-  CHECK_MSG(f != nullptr, "telemetry file should exist");
-  if (f != nullptr) {
-    std::fseek(f, 0, SEEK_END);
-    const long size = std::ftell(f);
+  std::FILE* file = std::fopen((prefix + ".bin").c_str(), "rb");
+  CHECK_MSG(file != nullptr, "telemetry file should exist");
+  if (file != nullptr) {
+    std::fseek(file, 0, SEEK_END);
+    const long size = std::ftell(file);
     CHECK_EQ(static_cast<std::uint64_t>(size),
              kRecords * static_cast<std::uint64_t>(sizeof(TelemetryRecord)));
-    std::fseek(f, 0, SEEK_SET);
+    std::fseek(file, 0, SEEK_SET);
     TelemetryRecord first{};
-    CHECK_EQ(std::fread(&first, sizeof(first), 1, f), 1u);
+    CHECK_EQ(std::fread(&first, sizeof(first), 1, file), 1u);
     CHECK_EQ(first.joint_count, 7u);
-    std::fclose(f);
+    std::fclose(file);
   }
 
   server.close();
@@ -278,7 +278,7 @@ void test_watchdog_trips_on_client_kill() {
   CHECK(successor.attach(name) == RegionError::kOk);
   CHECK_MSG(successor.take_control(), "a successor must be able to take control after a trip");
   bool trip_after_recovery = false;
-  for (std::uint64_t i = 0; i < 100; ++i, ++cycle) {
+  for (std::uint64_t step = 0; step < 100; ++step, ++cycle) {
     successor.heartbeat();
     if (server.tick(cycle)) {
       trip_after_recovery = true;
@@ -346,12 +346,12 @@ void test_release_and_retake_between_ticks_rearms() {
   CHECK(server.open(name, kPeriodNs, false) == RegionError::kOk);
   server.set_watchdog_timeout_cycles(20);
 
-  BridgeClient c;
-  CHECK(c.attach(name) == RegionError::kOk);
-  CHECK(c.take_control());
+  BridgeClient client;
+  CHECK(client.attach(name) == RegionError::kOk);
+  CHECK(client.take_control());
   std::uint64_t cycle = 0;
   for (; cycle < 50; ++cycle) {
-    c.heartbeat();
+    client.heartbeat();
     (void)server.tick(cycle);
   }
   // Client stalls past the timeout (GC pause, debugger, SIGSTOP...).
@@ -362,14 +362,14 @@ void test_release_and_retake_between_ticks_rearms() {
     }
   }
   CHECK_MSG(tripped, "stall must trip");
-  CHECK_MSG(!c.in_control(), "stalled client must discover it was revoked");
+  CHECK_MSG(!client.in_control(), "stalled client must discover it was revoked");
 
   // Client resumes and re-takes control -- both calls land between two ticks.
-  c.release_control();
-  CHECK(c.take_control());
+  client.release_control();
+  CHECK(client.take_control());
   bool re_tripped = false;
   for (; cycle < 300; ++cycle) {
-    c.heartbeat();
+    client.heartbeat();
     if (server.tick(cycle)) {
       re_tripped = true;
     }
@@ -404,9 +404,9 @@ void test_observer_heartbeat_does_not_feed_liveness() {
   bool tripped = false;
   for (; cycle < 200; ++cycle) {
     observer.heartbeat();
-    CommandRecord cmd{};
-    cmd.type = static_cast<std::uint32_t>(CommandType::kSetTarget);
-    CHECK_MSG(!observer.send(cmd), "an observer's command must be refused");
+    CommandRecord command{};
+    command.type = static_cast<std::uint32_t>(CommandType::kSetTarget);
+    CHECK_MSG(!observer.send(command), "an observer's command must be refused");
     if (server.tick(cycle)) {
       tripped = true;
     }
@@ -425,19 +425,19 @@ void test_command_sequence_is_contiguous() {
   SharedRegion::unlink(name);
   BridgeServer server;
   CHECK(server.open(name, kPeriodNs, false) == RegionError::kOk);
-  BridgeClient c;
-  CHECK(c.attach(name) == RegionError::kOk);
-  CHECK(c.take_control());
+  BridgeClient client;
+  CHECK(client.attach(name) == RegionError::kOk);
+  CHECK(client.take_control());
 
   std::uint64_t previous = 0;
   bool contiguous = true;
-  for (int i = 0; i < 20; ++i) {
-    for (int k = 0; k < 7; ++k) {
-      c.heartbeat();  // interleave liveness between sends
+  for (int round = 0; round < 20; ++round) {
+    for (int beat = 0; beat < 7; ++beat) {
+      client.heartbeat();  // interleave liveness between sends
     }
-    CommandRecord cmd{};
-    cmd.type = static_cast<std::uint32_t>(CommandType::kSetTarget);
-    CHECK(c.send(cmd));
+    CommandRecord command{};
+    command.type = static_cast<std::uint32_t>(CommandType::kSetTarget);
+    CHECK(client.send(command));
     CommandRecord got{};
     CHECK(server.poll_command(got));
     if (previous != 0 && got.sequence != previous + 1) {
@@ -462,9 +462,9 @@ void test_drain_once_refused_while_sink_thread_runs() {
   CHECK(sink.open("/tmp/rc_test_drain", Provenance::collect()));
   sink.start(server, 1);
   sleep_ms(5);
-  TelemetryRecord rec{};
-  for (int i = 0; i < 10; ++i) {
-    CHECK(server.publish(rec));
+  TelemetryRecord record{};
+  for (int index = 0; index < 10; ++index) {
+    CHECK(server.publish(record));
   }
   CHECK_MSG(sink.drain_once(server) == 0, "drain_once must refuse while the thread owns the ring");
   sink.stop();
@@ -511,14 +511,14 @@ void test_control_is_exclusive() {
   BridgeServer server;
   CHECK(server.open(name, kPeriodNs, false) == RegionError::kOk);
 
-  BridgeClient a;
-  BridgeClient b;
-  CHECK(a.attach(name) == RegionError::kOk);
-  CHECK(b.attach(name) == RegionError::kOk);
-  CHECK(a.take_control());
-  CHECK_MSG(!b.take_control(), "control must be exclusive");
-  a.release_control();
-  CHECK_MSG(b.take_control(), "control must be available after a clean release");
+  BridgeClient first;
+  BridgeClient second;
+  CHECK(first.attach(name) == RegionError::kOk);
+  CHECK(second.attach(name) == RegionError::kOk);
+  CHECK(first.take_control());
+  CHECK_MSG(!second.take_control(), "control must be exclusive");
+  first.release_control();
+  CHECK_MSG(second.take_control(), "control must be available after a clean release");
 
   server.close();
   SharedRegion::unlink(name);

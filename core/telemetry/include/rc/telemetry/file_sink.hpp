@@ -44,10 +44,10 @@ class FileSink {
   /// Opens `<path_prefix>.bin` and writes `<path_prefix>.json`.
   [[nodiscard]] bool open(const std::string& path_prefix, const Provenance& provenance);
 
-  /// Starts a background thread draining @p server every @p poll_interval_ms.
+  /// Starts a background thread draining @p server every @p poll_interval_milliseconds.
   /// The thread is ordinary (non-RT) and deliberately low priority: it must
   /// never compete with the control loop.
-  void start(rc::bridge::BridgeServer& server, unsigned poll_interval_ms = 10);
+  void start(rc::bridge::BridgeServer& server, unsigned poll_interval_milliseconds = 10);
 
   /// Stops the thread and flushes. Safe to call twice.
   void stop();
@@ -68,7 +68,7 @@ class FileSink {
   std::size_t drain_once(rc::bridge::BridgeServer& server);
 
  private:
-  void run(rc::bridge::BridgeServer& server, unsigned poll_interval_ms);
+  void run(rc::bridge::BridgeServer& server, unsigned poll_interval_milliseconds);
   /// The actual drain, used by both entry points. No ownership check.
   std::size_t drain_impl(rc::bridge::BridgeServer& server);
 

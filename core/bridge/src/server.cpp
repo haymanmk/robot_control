@@ -4,16 +4,16 @@ namespace rc::bridge {
 
 RegionError BridgeServer::open(const std::string& name, std::uint32_t control_period_ns,
                                bool lock_memory) {
-  const RegionError err =
+  const RegionError error =
       SharedRegion::create(name, region_, control_period_ns, timeout_cycles_, lock_memory);
   // kMlockFailed still yields a usable region; the caller decides whether a
   // pageable bridge is acceptable. Every other error leaves region_ invalid.
-  if (err != RegionError::kOk && err != RegionError::kMlockFailed) {
-    return err;
+  if (error != RegionError::kOk && error != RegionError::kMlockFailed) {
+    return error;
   }
   region_.get()->header.server_state.store(static_cast<std::uint32_t>(ServerState::kIdle),
                                            std::memory_order_release);
-  return err;
+  return error;
 }
 
 void BridgeServer::set_watchdog_timeout_cycles(std::uint32_t cycles) noexcept {
@@ -27,11 +27,11 @@ bool BridgeServer::publish(const rc::telemetry::TelemetryRecord& record) noexcep
   if (!region_.valid()) {
     return false;
   }
-  BridgeRegion& r = *region_.get();
-  if (r.telemetry.push(record)) {
+  BridgeRegion& mapped = *region_.get();
+  if (mapped.telemetry.push(record)) {
     return true;
   }
-  r.header.telemetry_dropped.fetch_add(1, std::memory_order_relaxed);
+  mapped.header.telemetry_dropped.fetch_add(1, std::memory_order_relaxed);
   return false;
 }
 
@@ -49,10 +49,10 @@ bool BridgeServer::tick(std::uint64_t cycle) noexcept {
   if (!region_.valid()) {
     return false;
   }
-  BridgeHeader& h = region_.get()->header;
-  h.server_heartbeat.store(++server_beat_, std::memory_order_release);
+  BridgeHeader& header = region_.get()->header;
+  header.server_heartbeat.store(++server_beat_, std::memory_order_release);
 
-  const std::uint64_t token = h.control_token.load(std::memory_order_acquire);
+  const std::uint64_t token = header.control_token.load(std::memory_order_acquire);
 
   if (token != watched_token_) {
     // A different client (or none). Baseline against *its* heartbeat rather
@@ -60,7 +60,7 @@ bool BridgeServer::tick(std::uint64_t cycle) noexcept {
     // what re-arms after a release()+take_control() pair that happened between
     // two ticks: the token value moved, even if it was never seen as zero.
     watched_token_ = token;
-    last_heartbeat_ = h.client_heartbeat.load(std::memory_order_acquire);
+    last_heartbeat_ = header.client_heartbeat.load(std::memory_order_acquire);
     last_progress_cycle_ = cycle;
     return false;
   }
@@ -72,7 +72,7 @@ bool BridgeServer::tick(std::uint64_t cycle) noexcept {
     return false;
   }
 
-  const std::uint64_t beat = h.client_heartbeat.load(std::memory_order_acquire);
+  const std::uint64_t beat = header.client_heartbeat.load(std::memory_order_acquire);
   if (beat != last_heartbeat_) {
     last_heartbeat_ = beat;
     last_progress_cycle_ = cycle;
@@ -88,9 +88,9 @@ bool BridgeServer::tick(std::uint64_t cycle) noexcept {
   // no longer commands anything. Because the token now reads 0, the next tick
   // takes the `token != watched_token_` branch and cannot re-fire.
   std::uint64_t expected = token;
-  (void)h.control_token.compare_exchange_strong(expected, 0, std::memory_order_acq_rel,
+  (void)header.control_token.compare_exchange_strong(expected, 0, std::memory_order_acq_rel,
                                                 std::memory_order_acquire);
-  h.watchdog_trips.fetch_add(1, std::memory_order_relaxed);
+  header.watchdog_trips.fetch_add(1, std::memory_order_relaxed);
   return true;
 }
 
@@ -118,15 +118,15 @@ ServerState BridgeServer::state() const noexcept {
       region_.get()->header.server_state.load(std::memory_order_acquire));
 }
 
-std::size_t BridgeServer::drain(rc::telemetry::TelemetryRecord* out, std::size_t max) noexcept {
+std::size_t BridgeServer::drain(rc::telemetry::TelemetryRecord* out, std::size_t max_records) noexcept {
   if (!region_.valid() || out == nullptr) {
     return 0;
   }
-  std::size_t n = 0;
-  while (n < max && region_.get()->telemetry.pop(out[n])) {
-    ++n;
+  std::size_t count = 0;
+  while (count < max_records && region_.get()->telemetry.pop(out[count])) {
+    ++count;
   }
-  return n;
+  return count;
 }
 
 std::uint64_t BridgeServer::telemetry_dropped() const noexcept {

@@ -75,13 +75,13 @@ std::size_t FileSink::drain_impl(rc::bridge::BridgeServer& server) {
   }
   std::size_t total = 0;
   for (;;) {
-    const std::size_t n = server.drain(buffer_.data(), buffer_.size());
-    if (n == 0) {
+    const std::size_t drained = server.drain(buffer_.data(), buffer_.size());
+    if (drained == 0) {
       break;
     }
-    std::fwrite(buffer_.data(), sizeof(TelemetryRecord), n, file_);
-    total += n;
-    if (n < buffer_.size()) {
+    std::fwrite(buffer_.data(), sizeof(TelemetryRecord), drained, file_);
+    total += drained;
+    if (drained < buffer_.size()) {
       break;  // ring is drained
     }
   }
@@ -91,10 +91,10 @@ std::size_t FileSink::drain_impl(rc::bridge::BridgeServer& server) {
   return total;
 }
 
-void FileSink::run(rc::bridge::BridgeServer& server, unsigned poll_interval_ms) {
+void FileSink::run(rc::bridge::BridgeServer& server, unsigned poll_interval_milliseconds) {
   while (!stop_requested_.load(std::memory_order_acquire)) {
     drain_impl(server);
-    std::this_thread::sleep_for(std::chrono::milliseconds(poll_interval_ms));
+    std::this_thread::sleep_for(std::chrono::milliseconds(poll_interval_milliseconds));
   }
   drain_impl(server);  // final sweep: whatever the loop published on its way out
   if (file_ != nullptr) {
@@ -102,7 +102,7 @@ void FileSink::run(rc::bridge::BridgeServer& server, unsigned poll_interval_ms) 
   }
 }
 
-void FileSink::start(rc::bridge::BridgeServer& server, unsigned poll_interval_ms) {
+void FileSink::start(rc::bridge::BridgeServer& server, unsigned poll_interval_milliseconds) {
   if (running_.load(std::memory_order_acquire)) {
     return;
   }
@@ -113,7 +113,7 @@ void FileSink::start(rc::bridge::BridgeServer& server, unsigned poll_interval_ms
   // while the worker is already running, and reading it from the worker is a
   // race ThreadSanitizer caught in an earlier version.
   running_.store(true, std::memory_order_release);
-  thread_ = std::thread(&FileSink::run, this, std::ref(server), poll_interval_ms);
+  thread_ = std::thread(&FileSink::run, this, std::ref(server), poll_interval_milliseconds);
 }
 
 void FileSink::stop() {

@@ -115,13 +115,13 @@ struct RtStatus {
   std::vector<std::string> notes;
 
   /// True only if every requested step succeeded.
-  [[nodiscard]] bool fully_applied(const RtOptions& opts) const noexcept;
+  [[nodiscard]] bool fully_applied(const RtOptions& options) const noexcept;
   /// The notes, one per line, indented to line up with CyclicReport::format().
   [[nodiscard]] std::string format() const;
 };
 
 /// Apply what is permitted; never throws, never exits. Read the result.
-RtStatus apply_realtime(const RtOptions& opts) noexcept;
+RtStatus apply_realtime(const RtOptions& options) noexcept;
 
 /// Grow and dirty the stack so later calls do not fault. Called by
 /// apply_realtime(); exposed because every thread needs its own.

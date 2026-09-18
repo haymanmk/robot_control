@@ -79,8 +79,8 @@ struct CyclicReport {
   /// How long body() ran: your fault.
   LatencyHistogram exec_time;
 
-  /// Sizes the three histograms to @p span; @p period_ns is recorded as-is.
-  CyclicReport(Nanos span, Nanos period_ns);
+  /// Sizes the three histograms to @p span; @p nominal_period is recorded as-is.
+  CyclicReport(Nanos span, Nanos nominal_period);
   /// Multi-line human-readable summary: counts, drift, and one row per histogram.
   [[nodiscard]] std::string format() const;
 };
@@ -92,12 +92,12 @@ struct CyclicReport {
 class CyclicTask {
  public:
   /// Cycle body. Receives the cycle index and the nominal period -- use the
-  /// nominal dt for integration, not the measured one, unless you have thought
+  /// nominal period for integration, not the measured one, unless you have thought
   /// hard about what a 200 us jitter spike does to your derivative term.
-  using Body = std::function<void(std::uint64_t cycle, Nanos dt)>;
+  using Body = std::function<void(std::uint64_t cycle, Nanos period)>;
 
   /// Stores the config. Nothing runs and no RT option is applied until run().
-  explicit CyclicTask(CyclicConfig cfg);
+  explicit CyclicTask(CyclicConfig config);
 
   /// Applies RT options, then runs exactly @p cycles iterations in the calling
   /// thread. Deliberately synchronous: the RT loop owns its thread, it is not

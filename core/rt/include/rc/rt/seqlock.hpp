@@ -79,16 +79,16 @@ class Seqlock {
  public:
   /// Writer side. Wait-free: bounded steps, no blocking, safe in the cyclic path.
   void store(const T& value) noexcept {
-    Word tmp[kWords] = {};
-    std::memcpy(tmp, &value, sizeof(T));
+    Word copy[kWords] = {};
+    std::memcpy(copy, &value, sizeof(T));
 
-    const std::uint64_t s = seq_.load(std::memory_order_relaxed);
-    seq_.store(s + 1, std::memory_order_relaxed);        // odd: write in progress
+    const std::uint64_t start = seq_.load(std::memory_order_relaxed);
+    seq_.store(start + 1, std::memory_order_relaxed);        // odd: write in progress
     std::atomic_thread_fence(std::memory_order_release);  // odd is visible before payload
-    for (std::size_t i = 0; i < kWords; ++i) {
-      std::atomic_ref<Word>(words_[i]).store(tmp[i], std::memory_order_relaxed);
+    for (std::size_t index = 0; index < kWords; ++index) {
+      std::atomic_ref<Word>(words_[index]).store(copy[index], std::memory_order_relaxed);
     }
-    seq_.store(s + 2, std::memory_order_release);         // even: stable again
+    seq_.store(start + 2, std::memory_order_release);         // even: stable again
   }
 
   /// Reader side. Retries until it gets a torn-free copy.
@@ -96,18 +96,18 @@ class Seqlock {
   ///        cannot win in a few attempts is being starved by a writer running at
   ///        a much higher rate, and should be told rather than spin.
   [[nodiscard]] bool load(T& out, unsigned max_attempts = 16) const noexcept {
-    Word tmp[kWords];
+    Word copy[kWords];
     for (unsigned attempt = 0; max_attempts == 0 || attempt < max_attempts; ++attempt) {
       const std::uint64_t before = seq_.load(std::memory_order_acquire);
       if (before & 1u) {
         continue;  // writer mid-update
       }
-      for (std::size_t i = 0; i < kWords; ++i) {
-        tmp[i] = std::atomic_ref<Word>(words_[i]).load(std::memory_order_relaxed);
+      for (std::size_t index = 0; index < kWords; ++index) {
+        copy[index] = std::atomic_ref<Word>(words_[index]).load(std::memory_order_relaxed);
       }
       std::atomic_thread_fence(std::memory_order_acquire);  // payload before the re-check
       if (seq_.load(std::memory_order_relaxed) == before) {
-        std::memcpy(&out, tmp, sizeof(T));
+        std::memcpy(&out, copy, sizeof(T));
         return true;
       }
       // Sequence moved: the copy may be torn. Discard it and try again.
@@ -123,8 +123,8 @@ class Seqlock {
   /// Only safe before either side is running.
   void reset() noexcept {
     seq_.store(0, std::memory_order_relaxed);
-    for (std::size_t i = 0; i < kWords; ++i) {
-      words_[i] = 0;
+    for (std::size_t index = 0; index < kWords; ++index) {
+      words_[index] = 0;
     }
   }
 

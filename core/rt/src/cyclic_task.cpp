@@ -6,8 +6,8 @@
 
 namespace rc::rt {
 
-CyclicReport::CyclicReport(Nanos span, Nanos period_ns)
-    : period(period_ns),
+CyclicReport::CyclicReport(Nanos span, Nanos nominal_period)
+    : period(nominal_period),
       // Wake latency is one-sided: you cannot wake before your deadline.
       wake_latency("wake-latency", 0, span.count(), 64),
       // Period error is two-sided: a cycle that ran late is followed by one
@@ -16,38 +16,38 @@ CyclicReport::CyclicReport(Nanos span, Nanos period_ns)
       exec_time("exec-time", 0, span.count(), 64) {}
 
 std::string CyclicReport::format() const {
-  std::ostringstream os;
-  char buf[256];
+  std::ostringstream out;
+  char line[256];
 
-  os << rt_status.format();
-  std::snprintf(buf, sizeof(buf), "%-18s%10s%10s%10s%10s\n", "metric", "mean", "p99", "p99.9",
+  out << rt_status.format();
+  std::snprintf(line, sizeof(line), "%-18s%10s%10s%10s%10s\n", "metric", "mean", "p99", "p99.9",
                 "max");
-  os << buf << std::string(58, '-') << '\n';
-  os << wake_latency.format_row() << '\n'
+  out << line << std::string(58, '-') << '\n';
+  out << wake_latency.format_row() << '\n'
      << period_error.format_row() << '\n'
      << exec_time.format_row() << '\n';
 
-  std::snprintf(buf, sizeof(buf),
+  std::snprintf(line, sizeof(line),
                 "\n  cycles %lu   overruns %lu   missed deadlines %lu\n"
                 "  drift %.3f ms over %.2f s nominal\n",
                 static_cast<unsigned long>(cycles), static_cast<unsigned long>(overruns),
                 static_cast<unsigned long>(missed_deadlines),
                 static_cast<double>(drift.count()) / 1e6,
                 static_cast<double>(cycles) * static_cast<double>(period.count()) / 1e9);
-  os << buf;
+  out << line;
 
-  const auto oor = wake_latency.out_of_range() + period_error.out_of_range();
-  if (oor > 0) {
-    std::snprintf(buf, sizeof(buf),
+  const auto outside_range = wake_latency.out_of_range() + period_error.out_of_range();
+  if (outside_range > 0) {
+    std::snprintf(line, sizeof(line),
                   "  note: %lu samples fell outside the histogram range; "
                   "percentiles are clipped (raise histogram_span)\n",
-                  static_cast<unsigned long>(oor));
-    os << buf;
+                  static_cast<unsigned long>(outside_range));
+    out << line;
   }
-  return os.str();
+  return out.str();
 }
 
-CyclicTask::CyclicTask(CyclicConfig cfg) : cfg_(cfg) {
+CyclicTask::CyclicTask(CyclicConfig config) : cfg_(config) {
   if (cfg_.overrun_threshold == Nanos::zero()) {
     cfg_.overrun_threshold = cfg_.period / 10;
   }
@@ -70,35 +70,35 @@ CyclicReport CyclicTask::run_impl(std::uint64_t max_cycles, const std::atomic<bo
   const Nanos origin = monotonic_now();
   Nanos previous_wake{Nanos::zero()};
 
-  for (std::uint64_t n = 0; n < max_cycles; ++n) {
+  for (std::uint64_t cycle = 0; cycle < max_cycles; ++cycle) {
     if (stop != nullptr && stop->load(std::memory_order_relaxed)) {
       break;
     }
 
-    // The phase lock: the deadline for cycle n depends only on the origin and
-    // n, never on when the previous cycle happened to finish.
-    const Nanos deadline = origin + period * static_cast<std::int64_t>(n);
-    if (n > 0) {
+    // The phase lock: the deadline for a cycle depends only on the origin and
+    // the cycle index, never on when the previous cycle happened to finish.
+    const Nanos deadline = origin + period * static_cast<std::int64_t>(cycle);
+    if (cycle > 0) {
       sleep_until(deadline);
     }
 
     const Nanos wake = monotonic_now();
     report.wake_latency.record((wake - deadline).count());
 
-    if (n > 0) {
-      const std::int64_t err = (wake - previous_wake - period).count();
-      report.period_error.record(err);
-      if (err > cfg_.overrun_threshold.count() || err < -cfg_.overrun_threshold.count()) {
+    if (cycle > 0) {
+      const std::int64_t error = (wake - previous_wake - period).count();
+      report.period_error.record(error);
+      if (error > cfg_.overrun_threshold.count() || error < -cfg_.overrun_threshold.count()) {
         ++report.overruns;
       }
     }
     previous_wake = wake;
 
-    body(n, period);
+    body(cycle, period);
 
-    const Nanos exec = monotonic_now() - wake;
-    report.exec_time.record(exec.count());
-    if (exec > period) {
+    const Nanos execution = monotonic_now() - wake;
+    report.exec_time.record(execution.count());
+    if (execution > period) {
       // We are not skipping cycles to catch up: the next deadline is already in
       // the past, sleep_until() returns immediately, and the loop runs flat out
       // until it recovers. That is a deliberate choice -- a control loop that

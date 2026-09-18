@@ -69,25 +69,25 @@ class SpscRing {
   /// policy. The cyclic path must never retry in a loop -- it drops, counts,
   /// and moves on.
   [[nodiscard]] bool push(const T& value) noexcept {
-    const std::uint64_t tail = tail_.load(std::memory_order_relaxed);
-    const std::uint64_t head = head_.load(std::memory_order_acquire);
-    if (tail - head >= Capacity) {
+    const std::uint64_t write_index = tail_.load(std::memory_order_relaxed);
+    const std::uint64_t read_index = head_.load(std::memory_order_acquire);
+    if (write_index - read_index >= Capacity) {
       return false;  // full
     }
-    slots_[tail & kMask] = value;
-    tail_.store(tail + 1, std::memory_order_release);
+    slots_[write_index & kMask] = value;
+    tail_.store(write_index + 1, std::memory_order_release);
     return true;
   }
 
   /// Consumer side. Returns false if empty.
   [[nodiscard]] bool pop(T& out) noexcept {
-    const std::uint64_t head = head_.load(std::memory_order_relaxed);
-    const std::uint64_t tail = tail_.load(std::memory_order_acquire);
-    if (head == tail) {
+    const std::uint64_t read_index = head_.load(std::memory_order_relaxed);
+    const std::uint64_t write_index = tail_.load(std::memory_order_acquire);
+    if (read_index == write_index) {
       return false;  // empty
     }
-    out = slots_[head & kMask];
-    head_.store(head + 1, std::memory_order_release);
+    out = slots_[read_index & kMask];
+    head_.store(read_index + 1, std::memory_order_release);
     return true;
   }
 
@@ -95,9 +95,9 @@ class SpscRing {
   /// a snapshot that may already be stale -- fine for diagnostics, never for
   /// control flow.
   [[nodiscard]] std::size_t size_approx() const noexcept {
-    const std::uint64_t tail = tail_.load(std::memory_order_acquire);
-    const std::uint64_t head = head_.load(std::memory_order_acquire);
-    return static_cast<std::size_t>(tail - head);
+    const std::uint64_t write_index = tail_.load(std::memory_order_acquire);
+    const std::uint64_t read_index = head_.load(std::memory_order_acquire);
+    return static_cast<std::size_t>(write_index - read_index);
   }
 
   /// size_approx() == 0, with the same caveat.
