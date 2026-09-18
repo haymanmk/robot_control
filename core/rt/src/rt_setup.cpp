@@ -68,29 +68,29 @@ MemoryFigures MemoryFigures::read() {
   MemoryFigures figures;
   rlimit limit{};
   if (::getrlimit(RLIMIT_MEMLOCK, &limit) == 0) {
-    figures.memlock_soft = rlim_to_u64(limit.rlim_cur);
-    figures.memlock_hard = rlim_to_u64(limit.rlim_max);
+    figures.memlock_soft_limit = rlim_to_u64(limit.rlim_cur);
+    figures.memlock_hard_limit = rlim_to_u64(limit.rlim_max);
   }
   if (::getrlimit(RLIMIT_RTPRIO, &limit) == 0) {
-    figures.rtprio_hard = rlim_to_u64(limit.rlim_max);
+    figures.realtime_priority_limit = rlim_to_u64(limit.rlim_max);
   }
-  figures.vm_size = proc_status_kb("VmSize:");
-  figures.vm_rss = proc_status_kb("VmRSS:");
-  figures.vm_locked = proc_status_kb("VmLck:");
+  figures.mapped_bytes = proc_status_kb("VmSize:");
+  figures.resident_bytes = proc_status_kb("VmRSS:");
+  figures.locked_bytes = proc_status_kb("VmLck:");
   figures.has_cap_ipc_lock = detect_cap_ipc_lock();
   return figures;
 }
 
 std::string MemoryFigures::format() const {
   std::ostringstream out;
-  out << "  memlock   limit soft " << mib(memlock_soft) << ", hard " << mib(memlock_hard);
+  out << "  memlock   limit soft " << mib(memlock_soft_limit) << ", hard " << mib(memlock_hard_limit);
   if (has_cap_ipc_lock) {
     out << "  (CAP_IPC_LOCK: limit does not apply)";
   }
   out << '\n';
-  out << "  memory    mapped " << mib(vm_size) << ", resident " << mib(vm_rss) << ", locked "
-     << mib(vm_locked) << '\n';
-  out << "  rtprio    hard limit " << (rtprio_hard == unlimited ? 99 : rtprio_hard) << '\n';
+  out << "  memory    mapped " << mib(mapped_bytes) << ", resident " << mib(resident_bytes) << ", locked "
+     << mib(locked_bytes) << '\n';
+  out << "  rtprio    hard limit " << (realtime_priority_limit == unlimited ? 99 : realtime_priority_limit) << '\n';
   return out.str();
 }
 
@@ -168,10 +168,10 @@ RtStatus apply_realtime(const RtOptions& options) noexcept {
   MemoryFigures before = MemoryFigures::read();
 
   if (options.priority > 0) {
-    if (before.rtprio_hard != unlimited && static_cast<std::uint64_t>(options.priority) > before.rtprio_hard) {
+    if (before.realtime_priority_limit != unlimited && static_cast<std::uint64_t>(options.priority) > before.realtime_priority_limit) {
       status.notes.emplace_back("SCHED_FIFO: priority " + std::to_string(options.priority) +
                             " exceeds RLIMIT_RTPRIO hard limit " +
-                            std::to_string(before.rtprio_hard) +
+                            std::to_string(before.realtime_priority_limit) +
                             " -- add '<user> - rtprio 99' to /etc/security/limits.conf and log in again");
     } else {
       sched_param scheduling{};
@@ -193,14 +193,14 @@ RtStatus apply_realtime(const RtOptions& options) noexcept {
   before = MemoryFigures::read();
 
   if (options.lock_memory) {
-    if (options.raise_soft_memlock && before.memlock_soft < before.memlock_hard) {
+    if (options.raise_soft_memlock && before.memlock_soft_limit < before.memlock_hard_limit) {
       rlimit limit{};
-      limit.rlim_cur = before.memlock_hard == unlimited ? RLIM_INFINITY
-                                                      : static_cast<rlim_t>(before.memlock_hard);
+      limit.rlim_cur = before.memlock_hard_limit == unlimited ? RLIM_INFINITY
+                                                      : static_cast<rlim_t>(before.memlock_hard_limit);
       limit.rlim_max = limit.rlim_cur;
       if (::setrlimit(RLIMIT_MEMLOCK, &limit) == 0) {
-        status.notes.emplace_back("memlock: raised soft limit " + mib(before.memlock_soft) +
-                              " -> " + mib(before.memlock_hard) + " (the hard limit)");
+        status.notes.emplace_back("memlock: raised soft limit " + mib(before.memlock_soft_limit) +
+                              " -> " + mib(before.memlock_hard_limit) + " (the hard limit)");
         before = MemoryFigures::read();
       }
     }
@@ -209,29 +209,29 @@ RtStatus apply_realtime(const RtOptions& options) noexcept {
     // page fault that exceeds the limit is fatal, not an error, and a process
     // that dies on its first heap or stack growth is worse than one that
     // reports honestly that it is running unlocked.
-    const std::uint64_t needed = before.vm_size + options.headroom_bytes;
-    const bool limited = !before.has_cap_ipc_lock && before.memlock_soft != unlimited;
-    if (limited && needed > before.memlock_soft) {
+    const std::uint64_t needed = before.mapped_bytes + options.headroom_bytes;
+    const bool limited = !before.has_cap_ipc_lock && before.memlock_soft_limit != unlimited;
+    if (limited && needed > before.memlock_soft_limit) {
       status.notes.emplace_back(
-          "mlockall: REFUSED -- this process maps " + mib(before.vm_size) + " and needs " +
+          "mlockall: REFUSED -- this process maps " + mib(before.mapped_bytes) + " and needs " +
           mib(options.headroom_bytes) + " of headroom to grow, but RLIMIT_MEMLOCK is " +
-          mib(before.memlock_soft) + " soft / " + mib(before.memlock_hard) +
+          mib(before.memlock_soft_limit) + " soft / " + mib(before.memlock_hard_limit) +
           " hard. Locking anyway would succeed and then SIGSEGV on the next page fault. "
           "Raise the limit to at least " + mib(needed) + " (docs/rt-setup.md)");
     } else if (::mlockall(MCL_CURRENT | MCL_FUTURE) == 0) {
       status.memory_locked = true;
       const MemoryFigures after = MemoryFigures::read();
-      std::string note = "mlockall(MCL_CURRENT|MCL_FUTURE): OK, " + mib(after.vm_locked) + " locked";
+      std::string note = "mlockall(MCL_CURRENT|MCL_FUTURE): OK, " + mib(after.locked_bytes) + " locked";
       if (limited) {
-        note += ", " + mib(before.memlock_soft - after.vm_locked) + " headroom left";
+        note += ", " + mib(before.memlock_soft_limit - after.locked_bytes) + " headroom left";
       }
       status.notes.emplace_back(note);
     } else {
       const int error_number = errno;
       status.notes.emplace_back(std::string("mlockall: FAILED (") + std::strerror(error_number) +
-                            ") -- this process maps " + mib(before.vm_size) +
-                            " but RLIMIT_MEMLOCK is " + mib(before.memlock_soft) + " soft / " +
-                            mib(before.memlock_hard) +
+                            ") -- this process maps " + mib(before.mapped_bytes) +
+                            " but RLIMIT_MEMLOCK is " + mib(before.memlock_soft_limit) + " soft / " +
+                            mib(before.memlock_hard_limit) +
                             " hard. Run rc_rtcheck, then see docs/rt-setup.md");
     }
   }

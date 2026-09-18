@@ -78,7 +78,7 @@ class BridgeClient {
   [[nodiscard]] bool server_alive() noexcept;
 
   /// The RT loop's nominal period, from the region header.
-  [[nodiscard]] std::uint32_t control_period_ns() const noexcept;
+  [[nodiscard]] std::uint32_t control_period_nanoseconds() const noexcept;
   /// Telemetry records the RT side dropped because the ring was full.
   [[nodiscard]] std::uint64_t telemetry_dropped() const noexcept;
   /// True after a successful attach().

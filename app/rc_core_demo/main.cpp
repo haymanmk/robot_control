@@ -57,15 +57,15 @@ void install_signal_handlers() {
 /// Enough to produce plausible telemetry; it is not a dynamics model and does
 /// not pretend to be one — core/model owns that.
 struct Plant {
-  double pos[simulated_joints]{};
-  double vel[simulated_joints]{};
+  double position[simulated_joints]{};
+  double velocity[simulated_joints]{};
 
   void step(const double* target, double time_step, double bandwidth_hertz) {
     const double alpha = 1.0 - std::exp(-2.0 * M_PI * bandwidth_hertz * time_step);
     for (unsigned joint = 0; joint < simulated_joints; ++joint) {
-      const double next = pos[joint] + (target[joint] - pos[joint]) * alpha;
-      vel[joint] = (next - pos[joint]) / time_step;
-      pos[joint] = next;
+      const double next = position[joint] + (target[joint] - position[joint]) * alpha;
+      velocity[joint] = (next - position[joint]) / time_step;
+      position[joint] = next;
     }
   }
 };
@@ -94,7 +94,7 @@ int run_server() {
 
   telemetry::Provenance provenance = telemetry::Provenance::collect();
   provenance.label = "rc_core_demo (simulated plant)";
-  provenance.control_rate_hz = rate_hertz;
+  provenance.control_rate_hertz = rate_hertz;
   std::printf("rc_core_demo server\n%s", provenance.to_summary().c_str());
   std::string why_not;
   if (!provenance.suitable_as_baseline(why_not)) {
@@ -119,8 +119,8 @@ int run_server() {
 
   rt::CyclicConfig config;
   config.period = rt::nanoseconds{period_nanoseconds};
-  config.rt.priority = 0;  // raise once RLIMIT_RTPRIO is configured; see ADR-0007
-  config.rt.lock_memory = true;
+  config.realtime.priority = 0;  // raise once RLIMIT_RTPRIO is configured; see ADR-0007
+  config.realtime.lock_memory = true;
   rt::CyclicTask task(config);
 
   std::atomic<bool> stop_loop{false};
@@ -147,7 +147,7 @@ int run_server() {
       flags |= telemetry::flag_client_lost;
       mode = ControlMode::stopping;
       stop_started_ns = now.count();
-      std::memcpy(hold, plant.pos, sizeof(hold));
+      std::memcpy(hold, plant.position, sizeof(hold));
       server.set_state(ServerState::stopping);
     }
 
@@ -172,7 +172,7 @@ int run_server() {
       switch (type) {
         case CommandType::set_target:
           for (unsigned joint = 0; joint < simulated_joints && joint < command.joint_count; ++joint) {
-            target[joint] = static_cast<double>(command.pos[joint]);
+            target[joint] = static_cast<double>(command.position[joint]);
           }
           mode = ControlMode::mit;
           server.set_state(ServerState::controlled);
@@ -180,7 +180,7 @@ int run_server() {
         case CommandType::stop:
           mode = ControlMode::stopping;
           stop_started_ns = now.count();
-          std::memcpy(hold, plant.pos, sizeof(hold));
+          std::memcpy(hold, plant.position, sizeof(hold));
           server.set_state(ServerState::stopping);
           break;
         case CommandType::disable:
@@ -218,15 +218,15 @@ int run_server() {
 
     telemetry::TelemetryRecord record{};
     record.cycle = cycle;
-    record.deadline_ns = now.count();
-    record.wake_ns = now.count();
+    record.deadline_nanoseconds = now.count();
+    record.wake_nanoseconds = now.count();
     record.joint_count = simulated_joints;
     record.mode = static_cast<std::uint32_t>(mode);
     record.flags = flags;
     for (unsigned joint = 0; joint < simulated_joints; ++joint) {
-      record.cmd_pos[joint] = static_cast<float>(target[joint]);
-      record.meas_pos[joint] = static_cast<float>(plant.pos[joint]);
-      record.meas_vel[joint] = static_cast<float>(plant.vel[joint]);
+      record.commanded_position[joint] = static_cast<float>(target[joint]);
+      record.measured_position[joint] = static_cast<float>(plant.position[joint]);
+      record.measured_velocity[joint] = static_cast<float>(plant.velocity[joint]);
     }
     if (!server.publish(record)) {
       telemetry_lost_pending = true;  // surfaces on the next record
@@ -235,13 +235,13 @@ int run_server() {
 
     telemetry::StateSnapshot snapshot{};
     snapshot.cycle = cycle;
-    snapshot.wake_ns = now.count();
+    snapshot.wake_nanoseconds = now.count();
     snapshot.joint_count = simulated_joints;
     snapshot.mode = record.mode;
     snapshot.flags = flags;
     for (unsigned joint = 0; joint < simulated_joints; ++joint) {
-      snapshot.pos[joint] = record.meas_pos[joint];
-      snapshot.vel[joint] = record.meas_vel[joint];
+      snapshot.position[joint] = record.measured_position[joint];
+      snapshot.velocity[joint] = record.measured_velocity[joint];
     }
     server.publish_snapshot(snapshot);
 
@@ -298,7 +298,7 @@ int run_client(bool clear_fault) {
   }
   std::printf("client: in control, period %u ns. Ctrl-C releases cleanly; "
               "`kill -9 %d` does not.\n",
-              client.control_period_ns(), ::getpid());
+              client.control_period_nanoseconds(), ::getpid());
 
   double phase = 0.0;
   while (!shutdown_requested.load(std::memory_order_acquire)) {
@@ -306,7 +306,7 @@ int run_client(bool clear_fault) {
     command.type = static_cast<std::uint32_t>(CommandType::set_target);
     command.joint_count = simulated_joints;
     for (unsigned joint = 0; joint < simulated_joints; ++joint) {
-      command.pos[joint] = static_cast<float>(0.4 * std::sin(phase + 0.3 * joint));
+      command.position[joint] = static_cast<float>(0.4 * std::sin(phase + 0.3 * joint));
     }
     if (!client.send(command)) {
       std::fprintf(stderr, "command ring full -- is the server draining?\n");
@@ -317,7 +317,7 @@ int run_client(bool clear_fault) {
     if (client.state(snapshot) && snapshot.cycle % 250 == 0) {
       std::printf("  cycle %8llu  j0=%+.3f  mode=%u\n",
                   static_cast<unsigned long long>(snapshot.cycle),
-                  static_cast<double>(snapshot.pos[0]), snapshot.mode);
+                  static_cast<double>(snapshot.position[0]), snapshot.mode);
       std::fflush(stdout);
     }
     ::usleep(20'000);  // 50 Hz: clients command at human rates, not loop rates

@@ -161,7 +161,7 @@ Provenance Provenance::collect() {
     provenance.memlock_limit = describe(limit.rlim_cur) + "/" + describe(limit.rlim_max);
   }
   if (::getrlimit(RLIMIT_RTPRIO, &limit) == 0) {
-    provenance.rtprio_limit = limit.rlim_max == RLIM_INFINITY ? "99" : std::to_string(limit.rlim_max);
+    provenance.realtime_priority_limit = limit.rlim_max == RLIM_INFINITY ? "99" : std::to_string(limit.rlim_max);
   }
   provenance.wall_clock = iso8601_utc_now();
   return provenance;
@@ -189,17 +189,17 @@ std::string Provenance::to_json() const {
   out << "    \"isolated_cpus\": " << quoted(isolated_cpus) << ",\n";
   out << "    \"nohz_full\": " << quoted(nohz_full) << ",\n";
   out << "    \"memlock_limit\": " << quoted(memlock_limit) << ",\n";
-  out << "    \"rtprio_limit\": " << quoted(rtprio_limit) << ",\n";
+  out << "    \"realtime_priority_limit\": " << quoted(realtime_priority_limit) << ",\n";
   out << "    \"nvidia_driver\": " << quoted(nvidia_driver) << ",\n";
   out << "    \"gpu_workload_running\": " << (gpu_workload_running ? "true" : "false") << "\n";
   out << "  },\n";
   out << "  \"run\": {\n";
   out << "    \"wall_clock\": " << quoted(wall_clock) << ",\n";
   out << "    \"label\": " << quoted(label) << ",\n";
-  out << "    \"rt_notes\": " << quoted(rt_notes) << ",\n";
+  out << "    \"realtime_notes\": " << quoted(realtime_notes) << ",\n";
   out << "    \"can_interface\": " << quoted(can_interface) << ",\n";
   out << "    \"can_bitrate\": " << can_bitrate << ",\n";
-  out << "    \"control_rate_hz\": " << control_rate_hz << "\n";
+  out << "    \"control_rate_hertz\": " << control_rate_hertz << "\n";
   out << "  }\n";
   out << "}\n";
   return out.str();
@@ -217,7 +217,7 @@ std::string Provenance::to_summary() const {
   if (!isolated_cpus.empty()) {
     out << "  isolated  " << isolated_cpus << '\n';
   }
-  out << "  limits    memlock " << memlock_limit << ", rtprio " << rtprio_limit << '\n';
+  out << "  limits    memlock " << memlock_limit << ", rtprio " << realtime_priority_limit << '\n';
   if (!nvidia_driver.empty()) {
     out << "  gpu       " << nvidia_driver
        << (gpu_workload_running ? "  [inference RUNNING]" : "  [idle]") << '\n';

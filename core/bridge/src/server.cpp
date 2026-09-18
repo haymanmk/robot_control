@@ -2,10 +2,10 @@
 
 namespace rc::bridge {
 
-RegionError BridgeServer::open(const std::string& name, std::uint32_t control_period_ns,
+RegionError BridgeServer::open(const std::string& name, std::uint32_t control_period_nanoseconds,
                                bool lock_memory) {
   const RegionError error =
-      SharedRegion::create(name, region, control_period_ns, timeout_cycles, lock_memory);
+      SharedRegion::create(name, region, control_period_nanoseconds, timeout_cycles, lock_memory);
   // mlock_failed still yields a usable region; the caller decides whether a
   // pageable bridge is acceptable. Every other error leaves region invalid.
   if (error != RegionError::ok && error != RegionError::mlock_failed) {

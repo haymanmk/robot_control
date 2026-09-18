@@ -77,7 +77,7 @@ void SharedRegion::close() noexcept {
 }
 
 RegionError SharedRegion::create(const std::string& name, SharedRegion& out,
-                                 std::uint32_t control_period_ns,
+                                 std::uint32_t control_period_nanoseconds,
                                  std::uint32_t watchdog_timeout_cycles, bool lock_memory) {
   // Replace any stale region from a previous run. A crashed server leaves its
   // shm behind; reusing it would inherit whatever indices it died with.
@@ -114,9 +114,9 @@ RegionError SharedRegion::create(const std::string& name, SharedRegion& out,
   header.snapshot_size = static_cast<std::uint32_t>(sizeof(rc::telemetry::StateSnapshot));
   header.telemetry_capacity = static_cast<std::uint32_t>(telemetry_ring_capacity);
   header.command_capacity = static_cast<std::uint32_t>(command_ring_capacity);
-  header.control_period_ns = control_period_ns;
-  header.server_start_ns = rc::rt::monotonic_now().count();
-  header.server_pid = static_cast<std::uint64_t>(::getpid());
+  header.control_period_nanoseconds = control_period_nanoseconds;
+  header.server_start_nanoseconds = rc::rt::monotonic_now().count();
+  header.server_process_id = static_cast<std::uint64_t>(::getpid());
   header.watchdog_timeout_cycles.store(watchdog_timeout_cycles, std::memory_order_relaxed);
   header.server_state.store(static_cast<std::uint32_t>(ServerState::starting),
                        std::memory_order_relaxed);

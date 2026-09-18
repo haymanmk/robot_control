@@ -13,19 +13,19 @@ CyclicReport::CyclicReport(nanoseconds span, nanoseconds nominal_period)
       // Period error is two-sided: a cycle that ran late is followed by one
       // that runs short as the phase lock pulls the schedule back.
       period_error("period-error", -span.count(), span.count(), 64),
-      exec_time("exec-time", 0, span.count(), 64) {}
+      execution_time("exec-time", 0, span.count(), 64) {}
 
 std::string CyclicReport::format() const {
   std::ostringstream out;
   char line[256];
 
-  out << rt_status.format();
+  out << realtime_status.format();
   std::snprintf(line, sizeof(line), "%-18s%10s%10s%10s%10s\n", "metric", "mean", "p99", "p99.9",
                 "max");
   out << line << std::string(58, '-') << '\n';
   out << wake_latency.format_row() << '\n'
      << period_error.format_row() << '\n'
-     << exec_time.format_row() << '\n';
+     << execution_time.format_row() << '\n';
 
   std::snprintf(line, sizeof(line),
                 "\n  cycles %lu   overruns %lu   missed deadlines %lu\n"
@@ -64,7 +64,7 @@ CyclicReport CyclicTask::run_until(const std::atomic<bool>& stop, const cycle_bo
 CyclicReport CyclicTask::run_impl(std::uint64_t max_cycles, const std::atomic<bool>* stop,
                                   const cycle_body& body) {
   CyclicReport report(config.histogram_span, config.period);
-  report.rt_status = apply_realtime(config.rt);
+  report.realtime_status = apply_realtime(config.realtime);
 
   const nanoseconds period = config.period;
   const nanoseconds origin = monotonic_now();
@@ -97,7 +97,7 @@ CyclicReport CyclicTask::run_impl(std::uint64_t max_cycles, const std::atomic<bo
     body(cycle, period);
 
     const nanoseconds execution = monotonic_now() - wake;
-    report.exec_time.record(execution.count());
+    report.execution_time.record(execution.count());
     if (execution > period) {
       // We are not skipping cycles to catch up: the next deadline is already in
       // the past, sleep_until() returns immediately, and the loop runs flat out

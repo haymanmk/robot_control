@@ -57,24 +57,24 @@ enum class ControlMode : std::uint32_t {
 /// 256 bytes. Trivially copyable, no pointers, identical layout in every
 /// process that maps it.
 struct TelemetryRecord {
-  std::uint64_t cycle;        ///< monotonically increasing cycle index
-  std::int64_t deadline_ns;   ///< when this cycle should have woken
-  std::int64_t wake_ns;       ///< when it actually woke
-  std::int64_t exec_ns;       ///< how long the cycle body ran
-  std::int64_t can_tx_ns;     ///< first command frame handed to the driver
-  std::int64_t can_rx_ns;     ///< newest feedback frame, KERNEL timestamp
+  std::uint64_t cycle;                      ///< monotonically increasing cycle index
+  std::int64_t deadline_nanoseconds;        ///< when this cycle should have woken
+  std::int64_t wake_nanoseconds;            ///< when it actually woke
+  std::int64_t execution_nanoseconds;       ///< how long the cycle body ran
+  std::int64_t can_transmit_nanoseconds;    ///< first command frame handed to the driver
+  std::int64_t can_receive_nanoseconds;     ///< newest feedback frame, KERNEL timestamp
 
-  std::uint32_t joint_count;  ///< how many of the per-joint arrays are meaningful
-  std::uint32_t flags;        ///< bitwise OR of RecordFlag
-  std::uint32_t fault_mask;   ///< bit per joint: drive reported a fault
-  std::uint32_t mode;         ///< ControlMode
+  std::uint32_t joint_count;                ///< how many of the per-joint arrays are meaningful
+  std::uint32_t flags;                      ///< bitwise OR of RecordFlag
+  std::uint32_t fault_mask;                 ///< bit per joint: drive reported a fault
+  std::uint32_t mode;                       ///< ControlMode
 
-  float cmd_pos[max_joints];  ///< commanded position, rad
-  float cmd_vel[max_joints];  ///< commanded velocity, rad/s
-  float cmd_tau[max_joints];  ///< commanded torque, N m
-  float meas_pos[max_joints]; ///< measured position, rad
-  float meas_vel[max_joints]; ///< measured velocity, rad/s
-  float meas_tau[max_joints]; ///< measured torque, N m
+  float commanded_position[max_joints];     ///< commanded position, rad
+  float commanded_velocity[max_joints];     ///< commanded velocity, rad/s
+  float commanded_torque[max_joints];       ///< commanded torque, N m
+  float measured_position[max_joints];      ///< measured position, rad
+  float measured_velocity[max_joints];      ///< measured velocity, rad/s
+  float measured_torque[max_joints];        ///< measured torque, N m
 };
 
 static_assert(sizeof(TelemetryRecord) == 256,
@@ -85,15 +85,15 @@ static_assert(sizeof(TelemetryRecord) == 256,
 /// publisher. Deliberately smaller than TelemetryRecord — a viewer wants
 /// position and health, not CAN timestamps.
 struct StateSnapshot {
-  std::uint64_t cycle;        ///< cycle this snapshot was taken in
-  std::int64_t wake_ns;       ///< CLOCK_MONOTONIC when that cycle woke
-  std::uint32_t joint_count;  ///< how many of the per-joint arrays are meaningful
-  std::uint32_t flags;        ///< bitwise OR of RecordFlag
-  std::uint32_t fault_mask;   ///< bit per joint: drive reported a fault
-  std::uint32_t mode;         ///< ControlMode
-  float pos[max_joints];      ///< measured position, rad
-  float vel[max_joints];      ///< measured velocity, rad/s
-  float tau[max_joints];      ///< measured torque, N m
+  std::uint64_t cycle;              ///< cycle this snapshot was taken in
+  std::int64_t wake_nanoseconds;    ///< CLOCK_MONOTONIC when that cycle woke
+  std::uint32_t joint_count;        ///< how many of the per-joint arrays are meaningful
+  std::uint32_t flags;              ///< bitwise OR of RecordFlag
+  std::uint32_t fault_mask;         ///< bit per joint: drive reported a fault
+  std::uint32_t mode;               ///< ControlMode
+  float position[max_joints];       ///< measured position, rad
+  float velocity[max_joints];       ///< measured velocity, rad/s
+  float torque[max_joints];         ///< measured torque, N m
 };
 
 }  // namespace rc::telemetry

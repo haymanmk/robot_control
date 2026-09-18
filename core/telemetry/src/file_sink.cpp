@@ -26,9 +26,11 @@ std::string numpy_dtype_json() {
   // on sizeof(TelemetryRecord) in record.hpp is what keeps this honest: change
   // the struct without changing this and the assert fires first.
   return
-      R"({"names": ["cycle","deadline_ns","wake_ns","exec_ns","can_tx_ns","can_rx_ns",)"
+      R"({"names": ["cycle","deadline_nanoseconds","wake_nanoseconds","execution_nanoseconds",)"
+      R"("can_transmit_nanoseconds","can_receive_nanoseconds",)"
       R"("joint_count","flags","fault_mask","mode",)"
-      R"("cmd_pos","cmd_vel","cmd_tau","meas_pos","meas_vel","meas_tau"],)"
+      R"("commanded_position","commanded_velocity","commanded_torque",)"
+      R"("measured_position","measured_velocity","measured_torque"],)"
       R"("formats": ["<u8","<i8","<i8","<i8","<i8","<i8","<u4","<u4","<u4","<u4",)"
       R"("(8,)<f4","(8,)<f4","(8,)<f4","(8,)<f4","(8,)<f4","(8,)<f4"],)"
       R"("itemsize": 256})";

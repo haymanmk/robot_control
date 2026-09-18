@@ -51,7 +51,7 @@ class SharedRegion {
   /// @param lock_memory mlock the mapping. The RT side touches it every cycle,
   ///        so a major fault here would be a multi-millisecond stall.
   [[nodiscard]] static RegionError create(const std::string& name, SharedRegion& out,
-                                          std::uint32_t control_period_ns,
+                                          std::uint32_t control_period_nanoseconds,
                                           std::uint32_t watchdog_timeout_cycles,
                                           bool lock_memory = true);
 

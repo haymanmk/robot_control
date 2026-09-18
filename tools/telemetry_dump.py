@@ -8,7 +8,7 @@ hand-transcribes the C++ struct:
     import json, numpy as np
     meta = json.load(open("run.json"))
     data = np.fromfile("run.bin", dtype=np.dtype(meta["record_dtype"]))
-    data["meas_pos"][:, 0]        # joint 0 over the whole run
+    data["measured_position"][:, 0]        # joint 0 over the whole run
 
 This script deliberately uses only the standard library, so it works on the
 control machine with nothing installed. Usage:
@@ -27,7 +27,8 @@ from pathlib import Path
 RECORD = "<Q5q4I48f"
 RECORD_SIZE = struct.calcsize(RECORD)
 JOINTS = 8
-ARRAYS = ("cmd_pos", "cmd_vel", "cmd_tau", "meas_pos", "meas_vel", "meas_tau")
+ARRAYS = ("commanded_position", "commanded_velocity", "commanded_torque",
+          "measured_position", "measured_velocity", "measured_torque")
 
 FLAGS = [
     (1 << 0, "overrun"), (1 << 1, "missed_deadline"), (1 << 2, "stale_feedback"),
@@ -60,8 +61,9 @@ def load(prefix: str):
     records = []
     for chunk in struct.iter_unpack(RECORD, raw[: len(raw) - len(raw) % RECORD_SIZE]):
         r = {
-            "cycle": chunk[0], "deadline_ns": chunk[1], "wake_ns": chunk[2],
-            "exec_ns": chunk[3], "can_tx_ns": chunk[4], "can_rx_ns": chunk[5],
+            "cycle": chunk[0], "deadline_nanoseconds": chunk[1], "wake_nanoseconds": chunk[2],
+            "execution_nanoseconds": chunk[3], "can_transmit_nanoseconds": chunk[4],
+            "can_receive_nanoseconds": chunk[5],
             "joint_count": chunk[6], "flags": chunk[7],
             "fault_mask": chunk[8], "mode": chunk[9],
         }
@@ -95,7 +97,7 @@ def main() -> int:
     if m.get("nvidia_driver"):
         state = "inference RUNNING" if m.get("gpu_workload_running") else "idle"
         print(f"  gpu       {m['nvidia_driver']} [{state}]")
-    print(f"  run       {run['wall_clock']}  {run['label']!r}  @ {run['control_rate_hz']} Hz")
+    print(f"  run       {run['wall_clock']}  {run['label']!r}  @ {run['control_rate_hertz']} Hz")
 
     if not records:
         return 0
@@ -113,7 +115,7 @@ def main() -> int:
     joints = records[0]["joint_count"]
     print(f"\n  tracking error, |cmd - meas| over {joints} joints")
     for j in range(joints):
-        errs = [abs(r["cmd_pos"][j] - r["meas_pos"][j]) for r in records]
+        errs = [abs(r["commanded_position"][j] - r["measured_position"][j]) for r in records]
         errs.sort()
         p99 = errs[min(len(errs) - 1, int(0.99 * len(errs)))]
         print(f"    joint{j}  mean {sum(errs)/len(errs):.5f}  p99 {p99:.5f}  max {errs[-1]:.5f} rad")

@@ -83,8 +83,8 @@ std::vector<Sample> run_clock_nanosleep(std::uint64_t cycles, nanoseconds period
   out.reserve(cycles);
   CyclicConfig config;
   config.period = period;
-  config.rt.priority = 0;       // measured separately by the caller's --rt
-  config.rt.lock_memory = false;
+  config.realtime.priority = 0;       // measured separately by the caller's --rt
+  config.realtime.lock_memory = false;
   CyclicTask task(config);
   task.run(cycles, [&](std::uint64_t, nanoseconds) {
     out.push_back({monotonic_now()});
@@ -96,7 +96,7 @@ std::vector<Sample> run_clock_nanosleep(std::uint64_t cycles, nanoseconds period
 struct Analysis {
   std::string name;
   LatencyHistogram period_error;
-  double drift_ms = 0.0;
+  double drift_milliseconds = 0.0;
   std::uint64_t overruns = 0;
 };
 
@@ -115,7 +115,7 @@ Analysis analyse(const std::string& name, const std::vector<Sample>& samples, na
   }
   if (samples.size() > 1) {
     const std::int64_t ideal = period.count() * static_cast<std::int64_t>(samples.size() - 1);
-    analysis.drift_ms = static_cast<double>((samples.back().wake - samples.front().wake).count() - ideal) / 1e6;
+    analysis.drift_milliseconds = static_cast<double>((samples.back().wake - samples.front().wake).count() - ideal) / 1e6;
   }
   return analysis;
 }
@@ -204,7 +204,7 @@ int main(int argc, char** argv) {
               "drift", "overruns");
   std::printf("%s\n", std::string(80, '-').c_str());
   for (const auto& result : results) {
-    std::printf("%s%11.2fm%10lu\n", result.period_error.format_row().c_str(), result.drift_ms,
+    std::printf("%s%11.2fm%10lu\n", result.period_error.format_row().c_str(), result.drift_milliseconds,
                 static_cast<unsigned long>(result.overruns));
   }
   std::printf(

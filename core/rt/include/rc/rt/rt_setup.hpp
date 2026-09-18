@@ -40,13 +40,13 @@ namespace rc::rt {
 /// Resource limits and memory figures that decide whether mlockall() can
 /// succeed, all in bytes. Read them before changing a limit, not after.
 struct MemoryFigures {
-  std::uint64_t memlock_soft = 0;   ///< RLIMIT_MEMLOCK soft limit (UINT64_MAX = unlimited)
-  std::uint64_t memlock_hard = 0;   ///< RLIMIT_MEMLOCK hard limit; only root can raise it
-  std::uint64_t rtprio_hard = 0;    ///< RLIMIT_RTPRIO hard limit: the highest SCHED_FIFO priority allowed
-  std::uint64_t vm_size = 0;        ///< VmSize: everything mapped -- what mlockall(MCL_CURRENT) locks
-  std::uint64_t vm_rss = 0;         ///< VmRSS: actually resident right now
-  std::uint64_t vm_locked = 0;      ///< VmLck: currently locked
-  bool has_cap_ipc_lock = false;    ///< root or CAP_IPC_LOCK: the memlock limit does not apply
+  std::uint64_t memlock_soft_limit = 0;        ///< RLIMIT_MEMLOCK soft limit (UINT64_MAX = unlimited)
+  std::uint64_t memlock_hard_limit = 0;        ///< RLIMIT_MEMLOCK hard limit; only root can raise it
+  std::uint64_t realtime_priority_limit = 0;   ///< RLIMIT_RTPRIO hard limit: the highest SCHED_FIFO priority allowed
+  std::uint64_t mapped_bytes = 0;              ///< VmSize: everything mapped -- what mlockall(MCL_CURRENT) locks
+  std::uint64_t resident_bytes = 0;            ///< VmRSS: actually resident right now
+  std::uint64_t locked_bytes = 0;              ///< VmLck: currently locked
+  bool has_cap_ipc_lock = false;               ///< root or CAP_IPC_LOCK: the memlock limit does not apply
 
   /// Read the current values. Does file I/O; never call from the cyclic path.
   [[nodiscard]] static MemoryFigures read();

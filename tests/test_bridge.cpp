@@ -44,7 +44,7 @@ void test_create_and_attach() {
   BridgeClient client;
   CHECK(client.attach(name) == RegionError::ok);
   CHECK(client.attached());
-  CHECK_EQ(client.control_period_ns(), period_nanoseconds);
+  CHECK_EQ(client.control_period_nanoseconds(), period_nanoseconds);
   CHECK_MSG(!client.in_control(), "attaching must not imply taking control");
 
   server.close();
@@ -73,7 +73,7 @@ void test_command_round_trip() {
   command.type = static_cast<std::uint32_t>(CommandType::set_target);
   command.joint_count = 6;
   for (unsigned joint = 0; joint < 6; ++joint) {
-    command.pos[joint] = static_cast<float>(joint) * 0.1f;
+    command.position[joint] = static_cast<float>(joint) * 0.1f;
   }
   CHECK(client.send(command));
 
@@ -81,7 +81,7 @@ void test_command_round_trip() {
   CHECK(server.poll_command(got));
   CHECK_EQ(got.joint_count, 6u);
   CHECK_EQ(got.type, static_cast<std::uint32_t>(CommandType::set_target));
-  CHECK(got.pos[3] > 0.29f && got.pos[3] < 0.31f);
+  CHECK(got.position[3] > 0.29f && got.position[3] < 0.31f);
   CHECK_MSG(!server.poll_command(got), "queue must be empty after one send");
 
   // Overflow must be reported, never silently dropped or blocking.
@@ -109,14 +109,14 @@ void test_snapshot_round_trip() {
   StateSnapshot snapshot{};
   snapshot.cycle = 42;
   snapshot.joint_count = 7;
-  snapshot.pos[2] = 1.25f;
+  snapshot.position[2] = 1.25f;
   server.publish_snapshot(snapshot);
 
   StateSnapshot got{};
   CHECK(client.state(got));
   CHECK_EQ(got.cycle, 42u);
   CHECK_EQ(got.joint_count, 7u);
-  CHECK(got.pos[2] > 1.24f && got.pos[2] < 1.26f);
+  CHECK(got.position[2] > 1.24f && got.position[2] < 1.26f);
 
   server.close();
   SharedRegion::unlink(name);
@@ -158,7 +158,7 @@ void test_file_sink() {
 
   Provenance provenance = Provenance::collect();
   provenance.label = "unit test";
-  provenance.control_rate_hz = 1000.0;
+  provenance.control_rate_hertz = 1000.0;
 
   rc::telemetry::FileSink sink;
   const std::string prefix = "/tmp/rc_test_telemetry";
@@ -170,7 +170,7 @@ void test_file_sink() {
     TelemetryRecord record{};
     record.cycle = cycle;
     record.joint_count = 7;
-    record.meas_pos[0] = static_cast<float>(cycle);
+    record.measured_position[0] = static_cast<float>(cycle);
     CHECK(server.publish(record));
     if (cycle % 64 == 0) {
       sleep_ms(1);  // let the drain thread keep up

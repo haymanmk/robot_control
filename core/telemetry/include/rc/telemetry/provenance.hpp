@@ -40,7 +40,7 @@ struct Provenance {
   std::string isolated_cpus;  ///< /sys/devices/system/cpu/isolated
   std::string nohz_full;      ///< /sys/devices/system/cpu/nohz_full
   std::string memlock_limit;  ///< RLIMIT_MEMLOCK "soft/hard" in MiB, or "unlimited"
-  std::string rtprio_limit;   ///< RLIMIT_RTPRIO hard limit: highest SCHED_FIFO priority allowed
+  std::string realtime_priority_limit;  ///< RLIMIT_RTPRIO hard limit: highest SCHED_FIFO priority allowed
 
   // GPU (ADR-0007: the driver is mandatory and it is a latency source)
   std::string nvidia_driver;  ///< empty if not present
@@ -48,10 +48,10 @@ struct Provenance {
 
   // Run
   std::string wall_clock;     ///< ISO-8601 UTC, for correlating with external logs
-  std::string rt_notes;       ///< what apply_realtime() actually granted
+  std::string realtime_notes;  ///< what apply_realtime() actually granted
   std::string can_interface;  ///< e.g. "can0"; empty if the run did not use the bus
   unsigned can_bitrate = 0;   ///< bit/s
-  double control_rate_hz = 0.0;  ///< nominal loop rate
+  double control_rate_hertz = 0.0;  ///< nominal loop rate
   std::string label;          ///< free-text: what this run was testing
 
   /// Collect everything discoverable. Does file I/O — never call from the

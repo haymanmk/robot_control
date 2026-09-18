@@ -45,7 +45,7 @@ struct CyclicConfig {
   /// Nominal cycle period. 2 ms is 500 Hz, the B601-RS nominal.
   nanoseconds period{std::chrono::milliseconds(2)};
   /// Scheduler, memory-lock and affinity settings applied at run() start.
-  RtOptions rt{};
+  RtOptions realtime{};
   /// A cycle whose period error exceeds this counts as an overrun.
   /// Zero means "10% of the period".
   nanoseconds overrun_threshold{nanoseconds::zero()};
@@ -70,14 +70,14 @@ struct CyclicReport {
   /// Nominal period the run was configured with.
   nanoseconds period{nanoseconds::zero()};
   /// Which real-time setup steps were actually granted.
-  RtStatus rt_status{};
+  RtStatus realtime_status{};
 
   /// wake - deadline: the scheduler's fault.
   LatencyHistogram wake_latency;
   /// wake[n] - wake[n-1] - T: what the motors actually see.
   LatencyHistogram period_error;
   /// How long body() ran: your fault.
-  LatencyHistogram exec_time;
+  LatencyHistogram execution_time;
 
   /// Sizes the three histograms to @p span; @p nominal_period is recorded as-is.
   CyclicReport(nanoseconds span, nanoseconds nominal_period);

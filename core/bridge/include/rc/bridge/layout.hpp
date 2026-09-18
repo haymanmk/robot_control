@@ -56,17 +56,17 @@ enum class CommandType : std::uint32_t {
 /// because a variable-length encoding in shared memory buys nothing at this size
 /// and costs a parser in the cyclic path.
 struct CommandRecord {
-  std::uint64_t sequence;     ///< client-assigned, strictly increasing; gaps mean loss
-  std::int64_t issued_ns;     ///< CLOCK_MONOTONIC at the client
-  std::uint32_t type;         ///< CommandType
-  std::uint32_t joint_count;  ///< how many of the per-joint arrays are meaningful
-  std::uint32_t mode;         ///< telemetry::ControlMode, for set_mode
-  std::uint32_t flags;        ///< reserved; unused, set to zero
-  float pos[rc::telemetry::max_joints];  ///< target position per joint, rad
-  float vel[rc::telemetry::max_joints];  ///< target velocity per joint, rad/s
-  float tau[rc::telemetry::max_joints];  ///< feed-forward torque per joint, N m
-  float kp[rc::telemetry::max_joints];   ///< position gain per joint (MIT mode)
-  float kd[rc::telemetry::max_joints];   ///< velocity gain per joint (MIT mode)
+  std::uint64_t sequence;             ///< client-assigned, strictly increasing; gaps mean loss
+  std::int64_t issued_nanoseconds;    ///< CLOCK_MONOTONIC at the client
+  std::uint32_t type;                 ///< CommandType
+  std::uint32_t joint_count;          ///< how many of the per-joint arrays are meaningful
+  std::uint32_t mode;                 ///< telemetry::ControlMode, for set_mode
+  std::uint32_t flags;                ///< reserved; unused, set to zero
+  float position[rc::telemetry::max_joints];       ///< target position per joint, rad
+  float velocity[rc::telemetry::max_joints];       ///< target velocity per joint, rad/s
+  float torque[rc::telemetry::max_joints];         ///< feed-forward torque per joint, N m
+  float position_gain[rc::telemetry::max_joints];  ///< MIT-mode stiffness per joint
+  float velocity_gain[rc::telemetry::max_joints];  ///< MIT-mode damping per joint
 };
 
 static_assert(sizeof(CommandRecord) == 192, "layout change requires a current_layout_version bump");
@@ -98,9 +98,9 @@ struct BridgeHeader {
   std::uint32_t snapshot_size;           ///< sizeof(StateSnapshot)
   std::uint32_t telemetry_capacity;      ///< telemetry_ring_capacity
   std::uint32_t command_capacity;        ///< command_ring_capacity
-  std::uint32_t control_period_ns;       ///< the RT loop's nominal period
-  std::int64_t server_start_ns;          ///< CLOCK_MONOTONIC when the server opened the region
-  std::uint64_t server_pid;              ///< for diagnostics only; never used for liveness
+  std::uint32_t control_period_nanoseconds;  ///< the RT loop's nominal period
+  std::int64_t server_start_nanoseconds;     ///< CLOCK_MONOTONIC when the server opened the region
+  std::uint64_t server_process_id;           ///< for diagnostics only; never used for liveness
 
   /// Client liveness. A **counter**, not a timestamp: two processes need not
   /// agree on a clock for a counter to prove progress, and a frozen client that

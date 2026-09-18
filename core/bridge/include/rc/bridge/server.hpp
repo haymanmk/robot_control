@@ -28,7 +28,7 @@ class BridgeServer {
   /// Creates the shared region. Call once, before the cyclic loop starts —
   /// this allocates and syscalls.
   [[nodiscard]] RegionError open(const std::string& name = default_region_name,
-                                 std::uint32_t control_period_ns = 2'000'000,
+                                 std::uint32_t control_period_nanoseconds = 2'000'000,
                                  bool lock_memory = true);
 
   /// Sets how many consecutive cycles without client progress trip the

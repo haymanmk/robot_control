@@ -110,8 +110,8 @@ bool BridgeClient::server_alive() noexcept {
   return advanced;
 }
 
-std::uint32_t BridgeClient::control_period_ns() const noexcept {
-  return region.valid() ? region.get()->header.control_period_ns : 0;
+std::uint32_t BridgeClient::control_period_nanoseconds() const noexcept {
+  return region.valid() ? region.get()->header.control_period_nanoseconds : 0;
 }
 
 std::uint64_t BridgeClient::telemetry_dropped() const noexcept {
