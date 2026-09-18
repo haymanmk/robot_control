@@ -1,6 +1,6 @@
 /// core_demo — the walking skeleton.
 ///
-/// A 500 Hz cyclic loop with a simulated 6-joint plant, publishing telemetry and
+/// A 500 Hz cyclic loop with a simulated 6-joint robot, publishing telemetry and
 /// taking commands over the bridge. No hardware, no CAN yet: what it demonstrates
 /// is the *architecture* — that a client can die however it likes and the control
 /// loop survives to execute a Category 2 stop
@@ -56,7 +56,7 @@ void install_signal_handlers() {
 /// Stand-in for the arm: each joint tracks its target through a first-order lag.
 /// Enough to produce plausible telemetry; it is not a dynamics model and does
 /// not pretend to be one — core/model owns that.
-struct Plant {
+struct Robot {
   double position[simulated_joints]{};
   double velocity[simulated_joints]{};
 
@@ -93,7 +93,7 @@ int run_server() {
   server.set_watchdog_timeout_cycles(50);  // 100 ms at 500 Hz
 
   telemetry::Provenance provenance = telemetry::Provenance::collect();
-  provenance.label = "core_demo (simulated plant)";
+  provenance.label = "core_demo (simulated robot)";
   provenance.control_rate_hertz = rate_hertz;
   std::printf("core_demo server\n%s", provenance.to_summary().c_str());
   std::string why_not;
@@ -110,7 +110,7 @@ int run_server() {
   sink.start(server);
   std::printf("  telemetry %s.bin (+ .json)\n  waiting for a client...\n\n", prefix.c_str());
 
-  Plant plant;
+  Robot robot;
   double target[simulated_joints]{};
   double hold[simulated_joints]{};
   ControlMode mode = ControlMode::idle;
@@ -147,7 +147,7 @@ int run_server() {
       flags |= telemetry::flag_client_lost;
       mode = ControlMode::stopping;
       stop_started_ns = now.count();
-      std::memcpy(hold, plant.position, sizeof(hold));
+      std::memcpy(hold, robot.position, sizeof(hold));
       server.set_state(ServerState::stopping);
     }
 
@@ -180,7 +180,7 @@ int run_server() {
         case CommandType::stop:
           mode = ControlMode::stopping;
           stop_started_ns = now.count();
-          std::memcpy(hold, plant.position, sizeof(hold));
+          std::memcpy(hold, robot.position, sizeof(hold));
           server.set_state(ServerState::stopping);
           break;
         case CommandType::disable:
@@ -213,8 +213,8 @@ int run_server() {
       flags |= telemetry::flag_holding;
     }
 
-    // ── 4. plant + publish ──
-    plant.step(target, static_cast<double>(period.count()) / 1e9, /*bandwidth_hertz=*/5.0);
+    // ── 4. robot + publish ──
+    robot.step(target, static_cast<double>(period.count()) / 1e9, /*bandwidth_hertz=*/5.0);
 
     telemetry::TelemetryRecord record{};
     record.cycle = cycle;
@@ -225,8 +225,8 @@ int run_server() {
     record.flags = flags;
     for (unsigned joint = 0; joint < simulated_joints; ++joint) {
       record.commanded_position[joint] = static_cast<float>(target[joint]);
-      record.measured_position[joint] = static_cast<float>(plant.position[joint]);
-      record.measured_velocity[joint] = static_cast<float>(plant.velocity[joint]);
+      record.measured_position[joint] = static_cast<float>(robot.position[joint]);
+      record.measured_velocity[joint] = static_cast<float>(robot.velocity[joint]);
     }
     if (!server.publish(record)) {
       telemetry_lost_pending = true;  // surfaces on the next record
