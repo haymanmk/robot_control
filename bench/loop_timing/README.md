@@ -145,9 +145,9 @@ Those properties do nothing for the median cycle and everything for the tail,
 once the cycle body stops being a busy loop and becomes Pinocchio's RNEA plus
 seven CAN frames. See [ADR-0003](../../docs/adr/0003-cpp-control-core-and-layering.md).
 
-The C++ version is also a working demo of `core/rt`. Its `clock-nanosleep`
-strategy *is* `rc::rt::CyclicTask`, the executive that every cyclic loop in
-this project runs on. Read `core/rt/include/rc/rt/cyclic_task.hpp`: the
+The C++ version is also a working demo of `core/realtime`. Its `clock-nanosleep`
+strategy *is* `robot_control::realtime::CyclicTask`, the executive that every cyclic loop in
+this project runs on. Read `core/realtime/include/robot_control/realtime/cyclic_task.hpp`: the
 comments are the lesson, and the code is the proof.
 
 ## Where the fundamentals live

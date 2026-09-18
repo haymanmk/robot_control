@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read a telemetry run written by rc::telemetry::FileSink.
+"""Read a telemetry run written by robot_control::telemetry::FileSink.
 
 The .bin file is a flat array of fixed-size records and the .json sidecar
 carries both the provenance and the exact numpy dtype, so analysis code never
@@ -13,7 +13,7 @@ hand-transcribes the C++ struct:
 This script deliberately uses only the standard library, so it works on the
 control machine with nothing installed. Usage:
 
-    python3 tools/telemetry_dump.py /tmp/rc_demo_telemetry
+    python3 tools/telemetry_dump.py /tmp/robot_control_demo_telemetry
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ import struct
 import sys
 from pathlib import Path
 
-# Mirrors rc::telemetry::TelemetryRecord. The sidecar's record_dtype is the
+# Mirrors robot_control::telemetry::TelemetryRecord. The sidecar's record_dtype is the
 # authority; this is the stdlib equivalent, and load() checks the two agree.
 RECORD = "<Q5q4I48f"
 RECORD_SIZE = struct.calcsize(RECORD)

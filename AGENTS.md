@@ -11,7 +11,7 @@ the linked ADR before changing anything a rule covers.
 cmake -B build && cmake --build build -j          # warnings are on: -Wall -Wextra -Wpedantic -Wshadow -Wconversion
 ctest --test-dir build --output-on-failure        # both suites must pass
 cmake -B build-tsan -DRC_SANITIZE=thread && cmake --build build-tsan -j
-ctest --test-dir build-tsan --output-on-failure   # required if you touched core/rt or core/bridge
+ctest --test-dir build-tsan --output-on-failure   # required if you touched core/realtime or core/bridge
 cmake -B build -DRC_DOCS_WARN_AS_ERROR=ON && cmake --build build --target docs   # if Doxygen is installed
 ```
 
@@ -31,7 +31,7 @@ Anything callable from inside the 500 Hz loop follows all of these
 - **No exceptions across the cycle boundary.**
 - **Every cyclic function is `noexcept`** and documents its worst-case cost.
 - **Every loop runs on `CyclicTask`.** Nothing writes its own sleep loop, and
-  deadlines come from a fixed origin, never from "now" (`core/rt/include/rc/rt/cyclic_task.hpp`).
+  deadlines come from a fixed origin, never from "now" (`core/realtime/include/robot_control/realtime/cyclic_task.hpp`).
 - **Time is `CLOCK_MONOTONIC` in `int64` nanoseconds**, never `CLOCK_REALTIME`
   and never `double`.
 
@@ -52,7 +52,7 @@ If you are unsure whether a function is on the cyclic path, assume it is.
 
 ## Shared-memory layout is versioned
 
-`core/bridge/include/rc/bridge/layout.hpp` and `core/telemetry/include/rc/telemetry/record.hpp`
+`core/bridge/include/robot_control/bridge/layout.hpp` and `core/telemetry/include/robot_control/telemetry/record.hpp`
 are memcpy'd across a process boundary and written to disk. Any change to a
 field, its order, or its size requires bumping `current_layout_version`, and the
 `static_assert`s on record sizes are budgets, not accidents. Records must stay
@@ -76,8 +76,8 @@ arm does on a fault. Do not change any of this without an ADR:
 
 ## Repository conventions
 
-- Layers depend downward only: `rt -> telemetry -> bridge -> can -> drive -> model -> control -> safety -> app`.
-  `core/rt` depends on libc alone.
+- Layers depend downward only: `realtime -> telemetry -> bridge -> can -> drive -> model -> control -> safety -> app`.
+  `core/realtime` depends on libc alone.
 - `core/` is C++20 with plain CMake and **no ROS and no Python.** Python lives
   in `tools/`, `bench/` and `notebooks/` and is for analysis, never control.
 - Notebooks are `.py` files with `# %%` cell markers. No `.ipynb` is committed.
@@ -92,10 +92,10 @@ arm does on a fault. Do not change any of this without an ADR:
   for variables, attributes, constants, functions and type aliases;
   `CamelCase` for classes, structs and enums; whole words, never
   abbreviations. A leading or trailing `_` is allowed only to resolve an
-  ambiguity such as a parameter shadowing a member. Older code still uses
-  `kConstant` and `member_` everywhere; do not copy that style, and rename as
-  you touch it. Formatting is 2-space indent with no formatter configured;
-  match the file you are in.
+  ambiguity such as a parameter shadowing a member. The whole tree follows
+  this; the old `kConstant` and `member_` styles must not come back.
+  Formatting is 2-space indent with no formatter configured; match the file
+  you are in.
 
 ## Before any motion on the real arm
 

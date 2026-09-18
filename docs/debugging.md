@@ -12,12 +12,12 @@ Source lines come from DWARF debug information, which the compiler adds with
 `-O2 -g`, so every binary already has it. You can confirm:
 
 ```bash
-readelf --debug-dump=info build/app/rc_rtcheck/rc_rtcheck | grep -m2 -E 'DW_AT_(name|comp_dir)'
+readelf --debug-dump=info build/app/realtime_check/realtime_check | grep -m2 -E 'DW_AT_(name|comp_dir)'
 ```
 
 ```
-DW_AT_name     : /home/user/robot_control/app/rc_rtcheck/main.cpp
-DW_AT_comp_dir : /home/user/robot_control/build/app/rc_rtcheck
+DW_AT_name     : /home/user/robot_control/app/realtime_check/main.cpp
+DW_AT_comp_dir : /home/user/robot_control/build/app/realtime_check
 ```
 
 Those two fields are the whole story. `DW_AT_name` is the **absolute path of
@@ -25,7 +25,7 @@ each source file as it was when the binary was built**. gdb opens exactly that
 path. If it exists, source lines just work — no configuration at all:
 
 ```
-(gdb) list rc::rt::prefault_stack
+(gdb) list robot_control::realtime::prefault_stack
 146	void prefault_stack(std::size_t bytes) noexcept {
 147	  if (bytes == 0) {
 ```
@@ -47,7 +47,7 @@ This happens when the binary was built somewhere else — on another machine, in
 a container, in CI — or the tree was moved. gdb then prints:
 
 ```
-/home/user/robot_control/core/rt/src/realtime_setup.cpp: No such file or directory.
+/home/user/robot_control/core/realtime/src/realtime_setup.cpp: No such file or directory.
 ```
 
 gdb always tries the recorded absolute path **first**. Only when that file
@@ -61,13 +61,13 @@ Pick the first when the whole tree moved; the second for one-off directories.
 
 ```
 (gdb) set substitute-path /home/user/robot_control /path/where/the/tree/is/now
-(gdb) list rc::rt::prefault_stack
+(gdb) list robot_control::realtime::prefault_stack
 ```
 
 **Add search directories.** gdb looks for the file's *basename* in each:
 
 ```
-(gdb) directory /path/to/robot_control/core/rt/src
+(gdb) directory /path/to/robot_control/core/realtime/src
 ```
 
 Check what gdb is doing with `info source` (the file it is showing and where
@@ -77,7 +77,7 @@ Both settings can go in a gdb script so you do not retype them. This project
 ships one:
 
 ```bash
-gdb -x tools/gdb/rc.gdb ./build/app/rc_rtcheck/rc_rtcheck
+gdb -x tools/gdb/robot_control.gdb ./build/app/realtime_check/realtime_check
 ```
 
 Edit the `substitute-path` line in that file if your tree has moved. (You can
@@ -92,7 +92,7 @@ our code *and* for glibc:
 
 ```
 #0  __GI___clock_nanosleep (...) at ../sysdeps/unix/sysv/linux/clock_nanosleep.c:78
-#1  rc::rt::sleep_until (...) at /home/user/robot_control/core/rt/src/clock.cpp:31
+#1  robot_control::realtime::sleep_until (...) at /home/user/robot_control/core/realtime/src/clock.cpp:31
 ```
 
 The glibc line comes from the **debug symbols package** for the library, not
@@ -116,7 +116,7 @@ libraries from a server, when it needs them. On Ubuntu:
 
 ```bash
 export DEBUGINFOD_URLS="https://debuginfod.ubuntu.com"
-gdb ./build/app/rc_rtcheck/rc_rtcheck
+gdb ./build/app/realtime_check/realtime_check
 ```
 
 The first time, gdb asks whether to enable it; answer yes, or put

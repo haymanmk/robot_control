@@ -19,7 +19,7 @@ the questions that come up when applying it.
 | Type aliases (`using`, `typedef`)      | `snake_case`              | `nanoseconds`, `word`, `joint_index`      |
 | Classes, structs, enums                | `CamelCase`               | `CyclicTask`, `CyclicConfig`, `ServerState` |
 | Functions and methods                  | `snake_case`              | `take_control()`, `out_of_range()`        |
-| Namespaces, files, directories         | `snake_case`              | `robot_control::real_time`, `cyclic_task.hpp` |
+| Namespaces, files, directories         | `snake_case`              | `robot_control::realtime`, `cyclic_task.hpp` |
 
 And one rule that cuts across all of the rows:
 
@@ -58,7 +58,7 @@ using joint_index = std::uint8_t;
 
 struct CyclicConfig {                              // struct: CamelCase
   nanoseconds period{std::chrono::milliseconds(2)};     // attribute: snake_case
-  RealTimeOptions real_time{};
+  RealtimeOptions realtime{};
 };
 ```
 
@@ -104,7 +104,7 @@ Do not add `_` to every member of a class; a class where every field ends in
 uppercase letter or a double underscore: those spellings are reserved by the
 C++ standard.
 
-**Namespaces are words too.** `rc::rt` reads as nothing; `robot_control::real_time`
+**Namespaces are words too.** `rc::rt` reads as nothing; `robot_control::realtime`
 reads as what it is. Namespace and directory renames are a repository-wide
 change, so they are done as a single dedicated commit, not opportunistically
 inside a feature change (see "Existing code" below).
@@ -144,8 +144,8 @@ in three steps:
    prefix, the shared-memory field names) happen in dedicated, mechanical
    commits that change nothing else. Do not mix them into a behavioural change.
 
-Do not rename anything in [`core/bridge/include/rc/bridge/layout.hpp`](../core/bridge/include/rc/bridge/layout.hpp)
-or [`core/telemetry/include/rc/telemetry/record.hpp`](../core/telemetry/include/rc/telemetry/record.hpp)
+Do not rename anything in [`core/bridge/include/robot_control/bridge/layout.hpp`](../core/bridge/include/robot_control/bridge/layout.hpp)
+or [`core/telemetry/include/robot_control/telemetry/record.hpp`](../core/telemetry/include/robot_control/telemetry/record.hpp)
 without reading the shared-memory section of [AGENTS.md](../AGENTS.md) first.
 A rename changes no bytes, but the same commit is a tempting place to change
 a field, and that needs a layout-version bump.

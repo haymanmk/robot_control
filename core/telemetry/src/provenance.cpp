@@ -1,4 +1,4 @@
-#include "rc/telemetry/provenance.hpp"
+#include "robot_control/telemetry/provenance.hpp"
 
 #include <sys/resource.h>
 #include <sys/utsname.h>
@@ -11,17 +11,17 @@
 #include <fstream>
 #include <sstream>
 
-#ifndef RC_GIT_SHA
-#define RC_GIT_SHA "unknown"
+#ifndef ROBOT_CONTROL_GIT_SHA
+#define ROBOT_CONTROL_GIT_SHA "unknown"
 #endif
-#ifndef RC_GIT_DIRTY
-#define RC_GIT_DIRTY "unknown"
+#ifndef ROBOT_CONTROL_GIT_DIRTY
+#define ROBOT_CONTROL_GIT_DIRTY "unknown"
 #endif
-#ifndef RC_BUILD_TYPE
-#define RC_BUILD_TYPE "unknown"
+#ifndef ROBOT_CONTROL_BUILD_TYPE
+#define ROBOT_CONTROL_BUILD_TYPE "unknown"
 #endif
 
-namespace rc::telemetry {
+namespace robot_control::telemetry {
 namespace {
 
 std::string trim(std::string text) {
@@ -124,9 +124,9 @@ std::string json_escape(const std::string& text) {
 Provenance Provenance::collect() {
   Provenance provenance;
 
-  provenance.git_sha = RC_GIT_SHA;
-  provenance.git_dirty = RC_GIT_DIRTY;
-  provenance.build_type = RC_BUILD_TYPE;
+  provenance.git_sha = ROBOT_CONTROL_GIT_SHA;
+  provenance.git_dirty = ROBOT_CONTROL_GIT_DIRTY;
+  provenance.build_type = ROBOT_CONTROL_BUILD_TYPE;
   provenance.compiler = __VERSION__;
   provenance.build_time = __DATE__ " " __TIME__;
 
@@ -244,4 +244,4 @@ bool Provenance::suitable_as_baseline(std::string& why_not) const {
   return ok;
 }
 
-}  // namespace rc::telemetry
+}  // namespace robot_control::telemetry

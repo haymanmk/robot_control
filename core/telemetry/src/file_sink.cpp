@@ -1,12 +1,12 @@
-#include "rc/telemetry/file_sink.hpp"
+#include "robot_control/telemetry/file_sink.hpp"
 
 #include <chrono>
 #include <cstdio>
 #include <fstream>
 
-#include "rc/bridge/server.hpp"
+#include "robot_control/bridge/server.hpp"
 
-namespace rc::telemetry {
+namespace robot_control::telemetry {
 namespace {
 /// One drain pulls at most this many records. Bounds the time spent holding the
 /// consumer side, and bounds the buffer we allocate once up front.
@@ -64,14 +64,14 @@ bool FileSink::open(const std::string& path_prefix, const Provenance& provenance
   return true;
 }
 
-std::size_t FileSink::drain_once(rc::bridge::BridgeServer& server) {
+std::size_t FileSink::drain_once(robot_control::bridge::BridgeServer& server) {
   if (worker_running.load(std::memory_order_acquire)) {
     return 0;  // the worker owns the consumer side; see header
   }
   return drain_unchecked(server);
 }
 
-std::size_t FileSink::drain_unchecked(rc::bridge::BridgeServer& server) {
+std::size_t FileSink::drain_unchecked(robot_control::bridge::BridgeServer& server) {
   if (file == nullptr || buffer.empty()) {
     return 0;
   }
@@ -93,7 +93,7 @@ std::size_t FileSink::drain_unchecked(rc::bridge::BridgeServer& server) {
   return total;
 }
 
-void FileSink::run(rc::bridge::BridgeServer& server, unsigned poll_interval_milliseconds) {
+void FileSink::run(robot_control::bridge::BridgeServer& server, unsigned poll_interval_milliseconds) {
   while (!stop_requested.load(std::memory_order_acquire)) {
     drain_unchecked(server);
     std::this_thread::sleep_for(std::chrono::milliseconds(poll_interval_milliseconds));
@@ -104,7 +104,7 @@ void FileSink::run(rc::bridge::BridgeServer& server, unsigned poll_interval_mill
   }
 }
 
-void FileSink::start(rc::bridge::BridgeServer& server, unsigned poll_interval_milliseconds) {
+void FileSink::start(robot_control::bridge::BridgeServer& server, unsigned poll_interval_milliseconds) {
   if (worker_running.load(std::memory_order_acquire)) {
     return;
   }
@@ -126,4 +126,4 @@ void FileSink::stop() {
   worker_running.store(false, std::memory_order_release);
 }
 
-}  // namespace rc::telemetry
+}  // namespace robot_control::telemetry

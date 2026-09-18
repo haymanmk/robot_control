@@ -7,7 +7,7 @@
 find_package(Doxygen QUIET OPTIONAL_COMPONENTS dot)
 find_package(Python3 QUIET COMPONENTS Interpreter)
 
-option(RC_DOCS_WARN_AS_ERROR "Fail the docs target on any Doxygen warning" OFF)
+option(ROBOT_CONTROL_DOCS_WARN_AS_ERROR "Fail the docs target on any Doxygen warning" OFF)
 
 if(NOT DOXYGEN_FOUND OR NOT Python3_Interpreter_FOUND)
   message(STATUS "Doxygen or Python 3 not found; the 'docs' target is unavailable")
@@ -15,7 +15,7 @@ if(NOT DOXYGEN_FOUND OR NOT Python3_Interpreter_FOUND)
 endif()
 
 set(DOXYGEN_OUTPUT_DIR "${CMAKE_BINARY_DIR}/docs")
-if(RC_DOCS_WARN_AS_ERROR)
+if(ROBOT_CONTROL_DOCS_WARN_AS_ERROR)
   set(DOXYGEN_WARN_AS_ERROR YES)
 else()
   set(DOXYGEN_WARN_AS_ERROR NO)

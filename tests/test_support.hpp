@@ -8,7 +8,7 @@
 #include <cstdlib>
 #include <string>
 
-namespace rc::test {
+namespace robot_control::test {
 
 inline int failures = 0;
 inline int checks = 0;
@@ -32,10 +32,10 @@ inline int finish(const char* suite) {
   return 1;
 }
 
-}  // namespace rc::test
+}  // namespace robot_control::test
 
-#define CHECK(expression) ::rc::test::report((expression), #expression, __FILE__, __LINE__)
+#define CHECK(expression) ::robot_control::test::report((expression), #expression, __FILE__, __LINE__)
 #define CHECK_EQ(left, right)                                                     \
-  ::rc::test::report((left) == (right), #left " == " #right, __FILE__, __LINE__,  \
+  ::robot_control::test::report((left) == (right), #left " == " #right, __FILE__, __LINE__,  \
                      std::to_string(left) + " vs " + std::to_string(right))
-#define CHECK_MSG(expression, message) ::rc::test::report((expression), #expression, __FILE__, __LINE__, (message))
+#define CHECK_MSG(expression, message) ::robot_control::test::report((expression), #expression, __FILE__, __LINE__, (message))

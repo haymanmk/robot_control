@@ -1,8 +1,8 @@
-#include "rc/bridge/client.hpp"
+#include "robot_control/bridge/client.hpp"
 
 #include <unistd.h>
 
-namespace rc::bridge {
+namespace robot_control::bridge {
 
 BridgeClient::~BridgeClient() { release_control(); }
 
@@ -87,7 +87,7 @@ bool BridgeClient::send(CommandRecord& command) noexcept {
   return true;
 }
 
-bool BridgeClient::state(rc::telemetry::StateSnapshot& out) const noexcept {
+bool BridgeClient::state(robot_control::telemetry::StateSnapshot& out) const noexcept {
   return region.valid() && region.get()->snapshot.load(out);
 }
 
@@ -120,4 +120,4 @@ std::uint64_t BridgeClient::telemetry_dropped() const noexcept {
              : 0;
 }
 
-}  // namespace rc::bridge
+}  // namespace robot_control::bridge

@@ -48,7 +48,7 @@ target.
 
 | Component | State |
 |---|---|
-| `core/rt` — clock, cyclic executive, lock-free rings, real-time setup | done |
+| `core/realtime` — clock, cyclic executive, lock-free rings, real-time setup | done |
 | `core/telemetry` — per-cycle record, provenance, file sink | done |
 | `core/bridge` — shared-memory transport, watchdog | done |
 | `core/can`, `core/drive`, `core/model`, `core/control`, `core/safety` | next |

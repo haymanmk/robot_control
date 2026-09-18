@@ -17,15 +17,15 @@
 #include <string>
 #include <vector>
 
-#include "rc/rt/clock.hpp"
-#include "rc/rt/cyclic_task.hpp"
-#include "rc/rt/latency_histogram.hpp"
+#include "robot_control/realtime/clock.hpp"
+#include "robot_control/realtime/cyclic_task.hpp"
+#include "robot_control/realtime/latency_histogram.hpp"
 
-using rc::rt::CyclicConfig;
-using rc::rt::CyclicTask;
-using rc::rt::LatencyHistogram;
-using rc::rt::nanoseconds;
-using rc::rt::monotonic_now;
+using robot_control::realtime::CyclicConfig;
+using robot_control::realtime::CyclicTask;
+using robot_control::realtime::LatencyHistogram;
+using robot_control::realtime::nanoseconds;
+using robot_control::realtime::monotonic_now;
 
 namespace {
 
@@ -55,7 +55,7 @@ std::vector<Sample> run_relative(std::uint64_t cycles, nanoseconds period, nanos
     busy_for(work);
     const nanoseconds remaining = period - (monotonic_now() - start);
     if (remaining > nanoseconds::zero()) {
-      rc::rt::sleep_for(remaining);
+      robot_control::realtime::sleep_for(remaining);
     }
   }
   return out;
@@ -71,7 +71,7 @@ std::vector<Sample> run_absolute_relative_sleep(std::uint64_t cycles, nanosecond
     out.push_back({monotonic_now()});
     busy_for(work);
     const nanoseconds deadline = origin + period * static_cast<std::int64_t>(cycle + 1);
-    rc::rt::sleep_for(deadline - monotonic_now());
+    robot_control::realtime::sleep_for(deadline - monotonic_now());
   }
   return out;
 }
@@ -172,11 +172,11 @@ int main(int argc, char** argv) {
   std::printf("  work      %g us busy-spin per cycle\n", work_microseconds);
 
   if (realtime_priority > 0 || cpu >= 0) {
-    rc::rt::RealtimeOptions options;
+    robot_control::realtime::RealtimeOptions options;
     options.priority = realtime_priority;
     options.lock_memory = true;
     options.cpu = cpu;
-    const auto status = rc::rt::apply_realtime(options);
+    const auto status = robot_control::realtime::apply_realtime(options);
     std::printf("%s", status.format().c_str());
   }
   std::printf("\n");

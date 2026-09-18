@@ -1,4 +1,4 @@
-#include "rc/bridge/shared_region.hpp"
+#include "robot_control/bridge/shared_region.hpp"
 
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -9,9 +9,9 @@
 #include <new>
 #include <utility>
 
-#include "rc/rt/clock.hpp"
+#include "robot_control/realtime/clock.hpp"
 
-namespace rc::bridge {
+namespace robot_control::bridge {
 namespace {
 constexpr std::size_t region_bytes = sizeof(BridgeRegion);
 }  // namespace
@@ -109,13 +109,13 @@ RegionError SharedRegion::create(const std::string& name, SharedRegion& out,
   BridgeHeader& header = mapped->header;
   header.layout_version = current_layout_version;
   header.header_size = static_cast<std::uint32_t>(sizeof(BridgeHeader));
-  header.telemetry_record_size = static_cast<std::uint32_t>(sizeof(rc::telemetry::TelemetryRecord));
+  header.telemetry_record_size = static_cast<std::uint32_t>(sizeof(robot_control::telemetry::TelemetryRecord));
   header.command_record_size = static_cast<std::uint32_t>(sizeof(CommandRecord));
-  header.snapshot_size = static_cast<std::uint32_t>(sizeof(rc::telemetry::StateSnapshot));
+  header.snapshot_size = static_cast<std::uint32_t>(sizeof(robot_control::telemetry::StateSnapshot));
   header.telemetry_capacity = static_cast<std::uint32_t>(telemetry_ring_capacity);
   header.command_capacity = static_cast<std::uint32_t>(command_ring_capacity);
   header.control_period_nanoseconds = control_period_nanoseconds;
-  header.server_start_nanoseconds = rc::rt::monotonic_now().count();
+  header.server_start_nanoseconds = robot_control::realtime::monotonic_now().count();
   header.server_process_id = static_cast<std::uint64_t>(::getpid());
   header.watchdog_timeout_cycles.store(watchdog_timeout_cycles, std::memory_order_relaxed);
   header.server_state.store(static_cast<std::uint32_t>(ServerState::starting),
@@ -194,9 +194,9 @@ RegionError SharedRegion::attach(const std::string& name, SharedRegion& out, boo
     return reject(RegionError::version_mismatch);
   }
   if (header.header_size != sizeof(BridgeHeader) ||
-      header.telemetry_record_size != sizeof(rc::telemetry::TelemetryRecord) ||
+      header.telemetry_record_size != sizeof(robot_control::telemetry::TelemetryRecord) ||
       header.command_record_size != sizeof(CommandRecord) ||
-      header.snapshot_size != sizeof(rc::telemetry::StateSnapshot) ||
+      header.snapshot_size != sizeof(robot_control::telemetry::StateSnapshot) ||
       header.telemetry_capacity != telemetry_ring_capacity ||
       header.command_capacity != command_ring_capacity) {
     return reject(RegionError::size_mismatch);
@@ -212,4 +212,4 @@ RegionError SharedRegion::attach(const std::string& name, SharedRegion& out, boo
 
 void SharedRegion::unlink(const std::string& name) noexcept { ::shm_unlink(name.c_str()); }
 
-}  // namespace rc::bridge
+}  // namespace robot_control::bridge

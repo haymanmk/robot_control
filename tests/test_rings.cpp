@@ -6,12 +6,12 @@
 #include <thread>
 #include <vector>
 
-#include "rc/rt/seqlock.hpp"
-#include "rc/rt/single_producer_single_consumer_ring.hpp"
+#include "robot_control/realtime/seqlock.hpp"
+#include "robot_control/realtime/single_producer_single_consumer_ring.hpp"
 #include "test_support.hpp"
 
-using rc::rt::Seqlock;
-using rc::rt::SingleProducerSingleConsumerRing;
+using robot_control::realtime::Seqlock;
+using robot_control::realtime::SingleProducerSingleConsumerRing;
 
 namespace {
 
@@ -168,5 +168,5 @@ int main() {
   test_ring_concurrent();
   test_seqlock_concurrent();
   test_seqlock_generation();
-  return rc::test::finish("rings");
+  return robot_control::test::finish("rings");
 }

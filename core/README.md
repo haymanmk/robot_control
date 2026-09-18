@@ -7,7 +7,7 @@ boundary honest as features are added.
 
 | Module | Status | Contents |
 |---|---|---|
-| [`rt/`](rt/) | done | `CLOCK_MONOTONIC` clock; phase-locked `CyclicTask`; `SingleProducerSingleConsumerRing`; `Seqlock`; real-time privileges; allocation-free histograms |
+| [`realtime/`](realtime/) | done | `CLOCK_MONOTONIC` clock; phase-locked `CyclicTask`; `SingleProducerSingleConsumerRing`; `Seqlock`; real-time privileges; allocation-free histograms |
 | [`telemetry/`](telemetry/) | done | fixed-size per-cycle record; provenance collection; file sink |
 | [`bridge/`](bridge/) | done | shared-memory transport; watchdog; server and client endpoints |
 | `can/` | — | SocketCAN with `SO_TIMESTAMPING`; frame encoding; bus statistics |
@@ -59,18 +59,18 @@ non-event. Only a client that has accepted responsibility is held to it.
 cmake -B build && cmake --build build -j && ctest --test-dir build --output-on-failure
 
 # first: can this user run real-time code on this machine?
-./build/app/rc_rtcheck/rc_rtcheck        # see docs/rt-setup.md if it says NOT READY
+./build/app/realtime_check/realtime_check        # see docs/rt-setup.md if it says NOT READY
 
 # in two terminals
-./build/app/rc_core_demo/rc_core_demo --server
-./build/app/rc_core_demo/rc_core_demo --client
+./build/app/core_demo/core_demo --server
+./build/app/core_demo/core_demo --client
 
 # then kill -9 the client, and read what happened
-python3 tools/telemetry_dump.py /tmp/rc_demo_telemetry
+python3 tools/telemetry_dump.py /tmp/robot_control_demo_telemetry
 
 # a new client is refused while the server is holding after a fault;
 # recovery is a deliberate act
-./build/app/rc_core_demo/rc_core_demo --client --clear-fault
+./build/app/core_demo/core_demo --client --clear-fault
 ```
 
 `Ctrl-C` on the client releases control cleanly and causes no fault. `kill -9`

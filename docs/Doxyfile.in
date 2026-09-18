@@ -5,10 +5,10 @@
 
 PROJECT_NAME           = "robot_control"
 PROJECT_BRIEF          = "Real-time control core for the reBot Arm B601-RS"
-PROJECT_NUMBER         = @RC_GIT_SHA@
+PROJECT_NUMBER         = @ROBOT_CONTROL_GIT_SHA@
 OUTPUT_DIRECTORY       = @DOXYGEN_OUTPUT_DIR@
 STRIP_FROM_PATH        = @CMAKE_SOURCE_DIR@
-STRIP_FROM_INC_PATH    = @CMAKE_SOURCE_DIR@/core/rt/include \
+STRIP_FROM_INC_PATH    = @CMAKE_SOURCE_DIR@/core/realtime/include \
                          @CMAKE_SOURCE_DIR@/core/bridge/include \
                          @CMAKE_SOURCE_DIR@/core/telemetry/include
 
@@ -18,7 +18,7 @@ INPUT                  = @CMAKE_SOURCE_DIR@/README.md \
                          @CMAKE_SOURCE_DIR@/core/README.md \
                          @CMAKE_SOURCE_DIR@/docs/ROADMAP.md \
                          @CMAKE_SOURCE_DIR@/docs/adr \
-                         @CMAKE_SOURCE_DIR@/core/rt/include \
+                         @CMAKE_SOURCE_DIR@/core/realtime/include \
                          @CMAKE_SOURCE_DIR@/core/bridge/include \
                          @CMAKE_SOURCE_DIR@/core/telemetry/include
 RECURSIVE              = YES

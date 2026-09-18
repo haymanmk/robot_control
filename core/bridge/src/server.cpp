@@ -1,6 +1,6 @@
-#include "rc/bridge/server.hpp"
+#include "robot_control/bridge/server.hpp"
 
-namespace rc::bridge {
+namespace robot_control::bridge {
 
 RegionError BridgeServer::open(const std::string& name, std::uint32_t control_period_nanoseconds,
                                bool lock_memory) {
@@ -23,7 +23,7 @@ void BridgeServer::set_watchdog_timeout_cycles(std::uint32_t cycles) noexcept {
   }
 }
 
-bool BridgeServer::publish(const rc::telemetry::TelemetryRecord& record) noexcept {
+bool BridgeServer::publish(const robot_control::telemetry::TelemetryRecord& record) noexcept {
   if (!region.valid()) {
     return false;
   }
@@ -35,7 +35,7 @@ bool BridgeServer::publish(const rc::telemetry::TelemetryRecord& record) noexcep
   return false;
 }
 
-void BridgeServer::publish_snapshot(const rc::telemetry::StateSnapshot& snapshot) noexcept {
+void BridgeServer::publish_snapshot(const robot_control::telemetry::StateSnapshot& snapshot) noexcept {
   if (region.valid()) {
     region.get()->snapshot.store(snapshot);
   }
@@ -118,7 +118,7 @@ ServerState BridgeServer::state() const noexcept {
       region.get()->header.server_state.load(std::memory_order_acquire));
 }
 
-std::size_t BridgeServer::drain(rc::telemetry::TelemetryRecord* out, std::size_t max_records) noexcept {
+std::size_t BridgeServer::drain(robot_control::telemetry::TelemetryRecord* out, std::size_t max_records) noexcept {
   if (!region.valid() || out == nullptr) {
     return 0;
   }
@@ -148,4 +148,4 @@ void BridgeServer::close() noexcept {
   region = SharedRegion{};
 }
 
-}  // namespace rc::bridge
+}  // namespace robot_control::bridge

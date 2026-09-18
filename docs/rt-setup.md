@@ -11,7 +11,7 @@ Build the project and run the check tool **as the user who will run the
 control core**, not as root:
 
 ```bash
-./build/app/rc_rtcheck/rc_rtcheck
+./build/app/realtime_check/realtime_check
 ```
 
 It prints the current limits, how much memory this process maps, how much
@@ -54,7 +54,7 @@ locked, so the reservation becomes real memory — and it counts against the lim
 
 ## Shrink the footprint first
 
-`rc::rt::prepare_process()` fixes this, and the demo now calls it before it
+`robot_control::realtime::prepare_process()` fixes this, and the demo now calls it before it
 creates any thread. It does three things:
 
 - `mallopt(M_ARENA_MAX, 1)` — one malloc arena for the whole process.
@@ -76,7 +76,7 @@ not looked at.
 ## Why a tight limit crashes instead of failing
 
 This is the part that is not obvious, and it produced a segmentation fault in
-`rc_rtcheck` on a machine where the limit was just above the footprint.
+`realtime_check` on a machine where the limit was just above the footprint.
 
 `mlockall(MCL_CURRENT | MCL_FUTURE)` returns an error only if the memory
 mapped *right now* does not fit under the limit. If it fits, it succeeds — and
@@ -173,12 +173,12 @@ sudo prlimit --pid $$ --memlock=unlimited:unlimited --rtprio=99:99
 - **Do not use a `SCHED_FIFO` priority above 50** without a reason. The
   kernel's own real-time threads (interrupt handlers, `ksoftirqd`) run at 50;
   going above them can starve the very interrupts your CAN bus depends on.
-  `rc_rtcheck` uses 80 to match `cyclictest` and common practice on isolated
+  `realtime_check` uses 80 to match `cyclictest` and common practice on isolated
   cores; on a shared laptop, 40 is a better starting point.
 
 ## Related
 
 - [ADR-0007](adr/0007-rt-platform-on-a-cuda-laptop.md) — the full tuning order
   for this laptop, and why `hwlatdetect` comes before any of it.
-- `core/rt/include/rc/rt/realtime_setup.hpp` — what `apply_realtime()` asks for and
+- `core/realtime/include/robot_control/realtime/realtime_setup.hpp` — what `apply_realtime()` asks for and
   how it reports what it got.

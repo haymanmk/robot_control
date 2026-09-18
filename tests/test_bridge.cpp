@@ -15,15 +15,15 @@
 #include <string>
 #include <thread>
 
-#include "rc/bridge/client.hpp"
-#include "rc/bridge/server.hpp"
-#include "rc/telemetry/file_sink.hpp"
+#include "robot_control/bridge/client.hpp"
+#include "robot_control/bridge/server.hpp"
+#include "robot_control/telemetry/file_sink.hpp"
 #include "test_support.hpp"
 
-using namespace rc::bridge;
-using rc::telemetry::Provenance;
-using rc::telemetry::StateSnapshot;
-using rc::telemetry::TelemetryRecord;
+using namespace robot_control::bridge;
+using robot_control::telemetry::Provenance;
+using robot_control::telemetry::StateSnapshot;
+using robot_control::telemetry::TelemetryRecord;
 
 namespace {
 
@@ -34,7 +34,7 @@ void sleep_milliseconds(unsigned milliseconds) {
 }
 
 void test_create_and_attach() {
-  const std::string name = "/rc_test_attach";
+  const std::string name = "/robot_control_test_attach";
   SharedRegion::unlink(name);
 
   BridgeServer server;
@@ -54,15 +54,15 @@ void test_create_and_attach() {
 }
 
 void test_attach_without_server() {
-  SharedRegion::unlink("/rc_test_absent");
+  SharedRegion::unlink("/robot_control_test_absent");
   BridgeClient client;
-  const RegionError error = client.attach("/rc_test_absent");
+  const RegionError error = client.attach("/robot_control_test_absent");
   CHECK_MSG(error == RegionError::not_found,
             std::string("expected not_found, got: ") + to_string(error));
 }
 
 void test_command_round_trip() {
-  const std::string name = "/rc_test_cmd";
+  const std::string name = "/robot_control_test_cmd";
   SharedRegion::unlink(name);
   BridgeServer server;
   CHECK(server.open(name, period_nanoseconds, false) == RegionError::ok);
@@ -101,7 +101,7 @@ void test_command_round_trip() {
 }
 
 void test_snapshot_round_trip() {
-  const std::string name = "/rc_test_snap";
+  const std::string name = "/robot_control_test_snap";
   SharedRegion::unlink(name);
   BridgeServer server;
   CHECK(server.open(name, period_nanoseconds, false) == RegionError::ok);
@@ -125,7 +125,7 @@ void test_snapshot_round_trip() {
 }
 
 void test_telemetry_drop_is_counted_not_blocking() {
-  const std::string name = "/rc_test_drop";
+  const std::string name = "/robot_control_test_drop";
   SharedRegion::unlink(name);
   BridgeServer server;
   CHECK(server.open(name, period_nanoseconds, false) == RegionError::ok);
@@ -153,7 +153,7 @@ void test_telemetry_drop_is_counted_not_blocking() {
 }
 
 void test_file_sink() {
-  const std::string name = "/rc_test_sink";
+  const std::string name = "/robot_control_test_sink";
   SharedRegion::unlink(name);
   BridgeServer server;
   CHECK(server.open(name, period_nanoseconds, false) == RegionError::ok);
@@ -162,8 +162,8 @@ void test_file_sink() {
   provenance.label = "unit test";
   provenance.control_rate_hertz = 1000.0;
 
-  rc::telemetry::FileSink sink;
-  const std::string prefix = "/tmp/rc_test_telemetry";
+  robot_control::telemetry::FileSink sink;
+  const std::string prefix = "/tmp/robot_control_test_telemetry";
   CHECK(sink.open(prefix, provenance));
   sink.start(server, /*poll_interval_ms=*/2);
 
@@ -226,7 +226,7 @@ pid_t spawn_client(const std::string& name, bool take_control) {
 /// The central test. A client takes control, proves liveness, then dies without
 /// releasing -- SIGKILL, so no destructor, no handler, nothing.
 void test_watchdog_trips_on_client_kill() {
-  const std::string name = "/rc_test_watchdog";
+  const std::string name = "/robot_control_test_watchdog";
   SharedRegion::unlink(name);
   BridgeServer server;
   CHECK(server.open(name, period_nanoseconds, false) == RegionError::ok);
@@ -297,7 +297,7 @@ void test_watchdog_trips_on_client_kill() {
 /// holder to be cleared used to publish a heartbeat on every failed attempt,
 /// which kept the corpse looking alive and the watchdog silent forever.
 void test_poller_cannot_keep_dead_holder_alive() {
-  const std::string name = "/rc_test_poller";
+  const std::string name = "/robot_control_test_poller";
   SharedRegion::unlink(name);
   BridgeServer server;
   CHECK(server.open(name, period_nanoseconds, false) == RegionError::ok);
@@ -342,7 +342,7 @@ void test_poller_cannot_keep_dead_holder_alive() {
 /// server a zero token, so a previously tripped watchdog stayed tripped forever.
 /// Now the server judges liveness per token *value*.
 void test_release_and_retake_between_ticks_rearms() {
-  const std::string name = "/rc_test_retake";
+  const std::string name = "/robot_control_test_retake";
   SharedRegion::unlink(name);
   BridgeServer server;
   CHECK(server.open(name, period_nanoseconds, false) == RegionError::ok);
@@ -386,7 +386,7 @@ void test_release_and_retake_between_ticks_rearms() {
 
 /// An observer calling heartbeat() must not feed liveness for the controller.
 void test_observer_heartbeat_does_not_feed_liveness() {
-  const std::string name = "/rc_test_obs_hb";
+  const std::string name = "/robot_control_test_obs_hb";
   SharedRegion::unlink(name);
   BridgeServer server;
   CHECK(server.open(name, period_nanoseconds, false) == RegionError::ok);
@@ -423,7 +423,7 @@ void test_observer_heartbeat_does_not_feed_liveness() {
 /// appeared whenever heartbeat() ran between sends -- contradicting the
 /// documented contract that gaps mean loss.
 void test_command_sequence_is_contiguous() {
-  const std::string name = "/rc_test_seq";
+  const std::string name = "/robot_control_test_seq";
   SharedRegion::unlink(name);
   BridgeServer server;
   CHECK(server.open(name, period_nanoseconds, false) == RegionError::ok);
@@ -456,12 +456,12 @@ void test_command_sequence_is_contiguous() {
 /// Review finding: drain_once() while the sink thread runs made two consumers
 /// pop a single-consumer ring.
 void test_drain_once_refused_while_sink_thread_runs() {
-  const std::string name = "/rc_test_drain";
+  const std::string name = "/robot_control_test_drain";
   SharedRegion::unlink(name);
   BridgeServer server;
   CHECK(server.open(name, period_nanoseconds, false) == RegionError::ok);
-  rc::telemetry::FileSink sink;
-  CHECK(sink.open("/tmp/rc_test_drain", Provenance::collect()));
+  robot_control::telemetry::FileSink sink;
+  CHECK(sink.open("/tmp/robot_control_test_drain", Provenance::collect()));
   sink.start(server, 1);
   sleep_milliseconds(5);
   TelemetryRecord record{};
@@ -480,7 +480,7 @@ void test_drain_once_refused_while_sink_thread_runs() {
 /// that only observes -- a plot, a logger, a UI -- can die freely. Only a client
 /// that accepted responsibility is held to it.
 void test_observer_death_does_not_trip_watchdog() {
-  const std::string name = "/rc_test_observer";
+  const std::string name = "/robot_control_test_observer";
   SharedRegion::unlink(name);
   BridgeServer server;
   CHECK(server.open(name, period_nanoseconds, false) == RegionError::ok);
@@ -508,7 +508,7 @@ void test_observer_death_does_not_trip_watchdog() {
 
 /// A second client must not be able to seize control from the first.
 void test_control_is_exclusive() {
-  const std::string name = "/rc_test_excl";
+  const std::string name = "/robot_control_test_excl";
   SharedRegion::unlink(name);
   BridgeServer server;
   CHECK(server.open(name, period_nanoseconds, false) == RegionError::ok);
@@ -543,5 +543,5 @@ int main() {
   test_release_and_retake_between_ticks_rearms();
   test_watchdog_trips_on_client_kill();
   test_poller_cannot_keep_dead_holder_alive();
-  return rc::test::finish("bridge");
+  return robot_control::test::finish("bridge");
 }

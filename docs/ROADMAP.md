@@ -21,7 +21,7 @@ A lab is a unit of learning, not a directory. Each lab produces:
 See [ADR-0004](adr/0004-system-decomposition.md).
 
 All real-time code is **C++20**. [ADR-0003](adr/0003-cpp-control-core-and-layering.md)
-gives the layer structure and the rules for the cyclic path. `core/rt` — the
+gives the layer structure and the rules for the cyclic path. `core/realtime` — the
 clock, the cyclic executive, real-time setup, and allocation-free measurement —
 is finished, and Lab 01 shows it working.
 
