@@ -13,21 +13,21 @@
 
 namespace rc::bridge {
 namespace {
-constexpr std::size_t kRegionSize = sizeof(BridgeRegion);
+constexpr std::size_t region_bytes = sizeof(BridgeRegion);
 }  // namespace
 
 const char* to_string(RegionError error) noexcept {
   switch (error) {
-    case RegionError::kOk: return "ok";
-    case RegionError::kShmOpenFailed: return "shm_open failed";
-    case RegionError::kTruncateFailed: return "ftruncate failed";
-    case RegionError::kMapFailed: return "mmap failed";
-    case RegionError::kNotFound: return "region does not exist (is the RT core running?)";
-    case RegionError::kNotReady: return "region exists but is still initialising (retry)";
-    case RegionError::kBadMagic: return "bad magic (not a bridge region, or corrupt)";
-    case RegionError::kVersionMismatch: return "layout version mismatch (rebuild the client)";
-    case RegionError::kSizeMismatch: return "record size mismatch (rebuild the client)";
-    case RegionError::kMlockFailed: return "mlock failed (raise RLIMIT_MEMLOCK)";
+    case RegionError::ok: return "ok";
+    case RegionError::shm_open_failed: return "shm_open failed";
+    case RegionError::truncate_failed: return "ftruncate failed";
+    case RegionError::map_failed: return "mmap failed";
+    case RegionError::not_found: return "region does not exist (is the RT core running?)";
+    case RegionError::not_ready: return "region exists but is still initialising (retry)";
+    case RegionError::bad_magic: return "bad magic (not a bridge region, or corrupt)";
+    case RegionError::version_mismatch: return "layout version mismatch (rebuild the client)";
+    case RegionError::size_mismatch: return "record size mismatch (rebuild the client)";
+    case RegionError::mlock_failed: return "mlock failed (raise RLIMIT_MEMLOCK)";
   }
   return "unknown";
 }
@@ -85,63 +85,63 @@ RegionError SharedRegion::create(const std::string& name, SharedRegion& out,
 
   const int descriptor = ::shm_open(name.c_str(), O_CREAT | O_EXCL | O_RDWR, S_IRUSR | S_IWUSR);
   if (descriptor < 0) {
-    return RegionError::kShmOpenFailed;
+    return RegionError::shm_open_failed;
   }
-  if (::ftruncate(descriptor, static_cast<off_t>(kRegionSize)) != 0) {
+  if (::ftruncate(descriptor, static_cast<off_t>(region_bytes)) != 0) {
     ::close(descriptor);
     ::shm_unlink(name.c_str());
-    return RegionError::kTruncateFailed;
+    return RegionError::truncate_failed;
   }
-  void* address = ::mmap(nullptr, kRegionSize, PROT_READ | PROT_WRITE, MAP_SHARED, descriptor, 0);
+  void* address = ::mmap(nullptr, region_bytes, PROT_READ | PROT_WRITE, MAP_SHARED, descriptor, 0);
   ::close(descriptor);  // the mapping keeps the object alive; the descriptor is no longer needed
   if (address == MAP_FAILED) {
     ::shm_unlink(name.c_str());
-    return RegionError::kMapFailed;
+    return RegionError::map_failed;
   }
 
   // ftruncate zero-fills, so magic is already 0 == "not ready" and any client
-  // that races us here gets kNotReady rather than garbage.
+  // that races us here gets not_ready rather than garbage.
   auto* mapped = new (address) BridgeRegion{};
   mapped->snapshot.reset();
   mapped->telemetry.reset();
   mapped->commands.reset();
 
   BridgeHeader& header = mapped->header;
-  header.layout_version = kLayoutVersion;
+  header.layout_version = current_layout_version;
   header.header_size = static_cast<std::uint32_t>(sizeof(BridgeHeader));
   header.telemetry_record_size = static_cast<std::uint32_t>(sizeof(rc::telemetry::TelemetryRecord));
   header.command_record_size = static_cast<std::uint32_t>(sizeof(CommandRecord));
   header.snapshot_size = static_cast<std::uint32_t>(sizeof(rc::telemetry::StateSnapshot));
-  header.telemetry_capacity = static_cast<std::uint32_t>(kTelemetryCapacity);
-  header.command_capacity = static_cast<std::uint32_t>(kCommandCapacity);
+  header.telemetry_capacity = static_cast<std::uint32_t>(telemetry_ring_capacity);
+  header.command_capacity = static_cast<std::uint32_t>(command_ring_capacity);
   header.control_period_ns = control_period_ns;
   header.server_start_ns = rc::rt::monotonic_now().count();
   header.server_pid = static_cast<std::uint64_t>(::getpid());
   header.watchdog_timeout_cycles.store(watchdog_timeout_cycles, std::memory_order_relaxed);
-  header.server_state.store(static_cast<std::uint32_t>(ServerState::kStarting),
+  header.server_state.store(static_cast<std::uint32_t>(ServerState::starting),
                        std::memory_order_relaxed);
 
   out.close();
   out.region_ = mapped;
-  out.mapped_size_ = kRegionSize;
+  out.mapped_size_ = region_bytes;
   out.name_ = name;
   out.owner_ = true;
 
-  RegionError result = RegionError::kOk;
+  RegionError result = RegionError::ok;
   if (lock_memory) {
-    if (::mlock(address, kRegionSize) == 0) {
+    if (::mlock(address, region_bytes) == 0) {
       out.locked_ = true;
     } else {
       // Not fatal: the region is still usable. Reported so the caller can decide
       // whether a pageable bridge is acceptable, rather than silently running an
       // RT loop over memory that can fault.
-      result = RegionError::kMlockFailed;
+      result = RegionError::mlock_failed;
     }
   }
 
   // Publish. Everything a client validates or reads is complete before this
   // store; the release pairs with the acquire load in attach().
-  header.magic.store(kMagic, std::memory_order_release);
+  header.magic.store(region_magic, std::memory_order_release);
   return result;
 }
 
@@ -149,35 +149,35 @@ RegionError SharedRegion::attach(const std::string& name, SharedRegion& out, boo
   const int flags = read_only ? O_RDONLY : O_RDWR;
   const int descriptor = ::shm_open(name.c_str(), flags, 0);
   if (descriptor < 0) {
-    return (errno == ENOENT) ? RegionError::kNotFound : RegionError::kShmOpenFailed;
+    return (errno == ENOENT) ? RegionError::not_found : RegionError::shm_open_failed;
   }
 
   struct stat file_info {};
   if (::fstat(descriptor, &file_info) != 0) {
     ::close(descriptor);
-    return RegionError::kShmOpenFailed;
+    return RegionError::shm_open_failed;
   }
   if (file_info.st_size == 0) {
     ::close(descriptor);
-    return RegionError::kNotReady;  // created, not yet ftruncated
+    return RegionError::not_ready;  // created, not yet ftruncated
   }
-  if (static_cast<std::size_t>(file_info.st_size) < kRegionSize) {
+  if (static_cast<std::size_t>(file_info.st_size) < region_bytes) {
     ::close(descriptor);
-    return RegionError::kSizeMismatch;
+    return RegionError::size_mismatch;
   }
 
   const int protection = read_only ? PROT_READ : (PROT_READ | PROT_WRITE);
-  void* address = ::mmap(nullptr, kRegionSize, protection, MAP_SHARED, descriptor, 0);
+  void* address = ::mmap(nullptr, region_bytes, protection, MAP_SHARED, descriptor, 0);
   ::close(descriptor);
   if (address == MAP_FAILED) {
-    return RegionError::kMapFailed;
+    return RegionError::map_failed;
   }
 
   auto* mapped = static_cast<BridgeRegion*>(address);
   const BridgeHeader& header = mapped->header;
 
   auto reject = [&](RegionError error) {
-    ::munmap(address, kRegionSize);
+    ::munmap(address, region_bytes);
     return error;
   };
 
@@ -185,29 +185,29 @@ RegionError SharedRegion::attach(const std::string& name, SharedRegion& out, boo
   // else in the header is trustworthy until it reads back as ours.
   const std::uint64_t observed_magic = header.magic.load(std::memory_order_acquire);
   if (observed_magic == 0) {
-    return reject(RegionError::kNotReady);
+    return reject(RegionError::not_ready);
   }
-  if (observed_magic != kMagic) {
-    return reject(RegionError::kBadMagic);
+  if (observed_magic != region_magic) {
+    return reject(RegionError::bad_magic);
   }
-  if (header.layout_version != kLayoutVersion) {
-    return reject(RegionError::kVersionMismatch);
+  if (header.layout_version != current_layout_version) {
+    return reject(RegionError::version_mismatch);
   }
   if (header.header_size != sizeof(BridgeHeader) ||
       header.telemetry_record_size != sizeof(rc::telemetry::TelemetryRecord) ||
       header.command_record_size != sizeof(CommandRecord) ||
       header.snapshot_size != sizeof(rc::telemetry::StateSnapshot) ||
-      header.telemetry_capacity != kTelemetryCapacity ||
-      header.command_capacity != kCommandCapacity) {
-    return reject(RegionError::kSizeMismatch);
+      header.telemetry_capacity != telemetry_ring_capacity ||
+      header.command_capacity != command_ring_capacity) {
+    return reject(RegionError::size_mismatch);
   }
 
   out.close();
   out.region_ = mapped;
-  out.mapped_size_ = kRegionSize;
+  out.mapped_size_ = region_bytes;
   out.name_ = name;
   out.owner_ = false;
-  return RegionError::kOk;
+  return RegionError::ok;
 }
 
 void SharedRegion::unlink(const std::string& name) noexcept { ::shm_unlink(name.c_str()); }

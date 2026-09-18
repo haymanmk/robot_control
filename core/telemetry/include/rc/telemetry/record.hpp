@@ -27,31 +27,31 @@ namespace rc::telemetry {
 
 /// Seven on the B601-RS (6 arm + gripper); rounded up so the record stays a
 /// round 256 bytes and one more joint does not change the wire format.
-inline constexpr unsigned kMaxJoints = 8;
+inline constexpr unsigned max_joints = 8;
 
 /// Per-cycle condition flags. Bitfield so a cycle can report several at once.
 enum RecordFlag : std::uint32_t {
-  kFlagNone            = 0u,
-  kFlagOverrun         = 1u << 0,  ///< period error beyond the overrun threshold
-  kFlagMissedDeadline  = 1u << 1,  ///< body() ran longer than the period
-  kFlagStaleFeedback   = 1u << 2,  ///< a joint's feedback is older than allowed
-  kFlagCommandDropped  = 1u << 3,  ///< command ring was full; a command was lost
-  kFlagTelemetryLost   = 1u << 4,  ///< telemetry ring was full; records were lost
-  kFlagClientLost      = 1u << 5,  ///< heartbeat watchdog fired (ADR-0005)
-  kFlagLimitViolation  = 1u << 6,  ///< a soft limit was hit and clamped
-  kFlagDriveFault      = 1u << 7,  ///< at least one drive reports a fault
-  kFlagStopping        = 1u << 8,  ///< executing a Category 2 ramp
-  kFlagHolding         = 1u << 9,  ///< compliant hold after a stop
+  flag_none            = 0u,
+  flag_overrun         = 1u << 0,  ///< period error beyond the overrun threshold
+  flag_missed_deadline = 1u << 1,  ///< body() ran longer than the period
+  flag_stale_feedback  = 1u << 2,  ///< a joint's feedback is older than allowed
+  flag_command_dropped = 1u << 3,  ///< command ring was full; a command was lost
+  flag_telemetry_lost  = 1u << 4,  ///< telemetry ring was full; records were lost
+  flag_client_lost     = 1u << 5,  ///< heartbeat watchdog fired (ADR-0005)
+  flag_limit_violation = 1u << 6,  ///< a soft limit was hit and clamped
+  flag_drive_fault     = 1u << 7,  ///< at least one drive reports a fault
+  flag_stopping        = 1u << 8,  ///< executing a Category 2 ramp
+  flag_holding         = 1u << 9,  ///< compliant hold after a stop
 };
 
 /// Control mode in force for this cycle.
 enum class ControlMode : std::uint32_t {
-  kIdle = 0,       ///< enabled but commanding nothing
-  kMit = 1,        ///< impedance: pos, vel, kp, kd, tau
-  kPosVel = 2,     ///< drive-side position loop with a velocity limit
-  kVelocity = 3,
-  kStopping = 4,   ///< Category 2 deceleration ramp
-  kHolding = 5,    ///< compliant hold
+  idle = 0,               ///< enabled but commanding nothing
+  mit = 1,                ///< impedance: position, velocity, gains and torque
+  position_velocity = 2,  ///< drive-side position loop with a velocity limit
+  velocity = 3,
+  stopping = 4,           ///< Category 2 deceleration ramp
+  holding = 5,            ///< compliant hold
 };
 
 /// 256 bytes. Trivially copyable, no pointers, identical layout in every
@@ -69,12 +69,12 @@ struct TelemetryRecord {
   std::uint32_t fault_mask;   ///< bit per joint: drive reported a fault
   std::uint32_t mode;         ///< ControlMode
 
-  float cmd_pos[kMaxJoints];  ///< commanded position, rad
-  float cmd_vel[kMaxJoints];  ///< commanded velocity, rad/s
-  float cmd_tau[kMaxJoints];  ///< commanded torque, N m
-  float meas_pos[kMaxJoints]; ///< measured position, rad
-  float meas_vel[kMaxJoints]; ///< measured velocity, rad/s
-  float meas_tau[kMaxJoints]; ///< measured torque, N m
+  float cmd_pos[max_joints];  ///< commanded position, rad
+  float cmd_vel[max_joints];  ///< commanded velocity, rad/s
+  float cmd_tau[max_joints];  ///< commanded torque, N m
+  float meas_pos[max_joints]; ///< measured position, rad
+  float meas_vel[max_joints]; ///< measured velocity, rad/s
+  float meas_tau[max_joints]; ///< measured torque, N m
 };
 
 static_assert(sizeof(TelemetryRecord) == 256,
@@ -91,9 +91,9 @@ struct StateSnapshot {
   std::uint32_t flags;        ///< bitwise OR of RecordFlag
   std::uint32_t fault_mask;   ///< bit per joint: drive reported a fault
   std::uint32_t mode;         ///< ControlMode
-  float pos[kMaxJoints];      ///< measured position, rad
-  float vel[kMaxJoints];      ///< measured velocity, rad/s
-  float tau[kMaxJoints];      ///< measured torque, N m
+  float pos[max_joints];      ///< measured position, rad
+  float vel[max_joints];      ///< measured velocity, rad/s
+  float tau[max_joints];      ///< measured torque, N m
 };
 
 }  // namespace rc::telemetry

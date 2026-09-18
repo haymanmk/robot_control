@@ -16,18 +16,18 @@
 
 namespace rc::bridge {
 
-/// Why create() or attach() failed. kOk is success.
+/// Why create() or attach() failed. ok is success.
 enum class RegionError {
-  kOk = 0,
-  kShmOpenFailed,
-  kTruncateFailed,
-  kMapFailed,
-  kNotFound,
-  kNotReady,     ///< region exists but the server has not finished initialising it: retry
-  kBadMagic,
-  kVersionMismatch,
-  kSizeMismatch,
-  kMlockFailed,
+  ok = 0,
+  shm_open_failed,
+  truncate_failed,
+  map_failed,
+  not_found,
+  not_ready,     ///< region exists but the server has not finished initialising it: retry
+  bad_magic,
+  version_mismatch,
+  size_mismatch,
+  mlock_failed,
 };
 
 /// Short human-readable name for a RegionError, for logs.

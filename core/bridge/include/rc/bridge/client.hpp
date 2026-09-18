@@ -39,7 +39,7 @@ class BridgeClient {
 
   /// Map the RT core's region for reading. Does not arm the watchdog; a
   /// monitoring client stops here.
-  [[nodiscard]] RegionError attach(const std::string& name = kDefaultRegionName);
+  [[nodiscard]] RegionError attach(const std::string& name = default_region_name);
 
   /// Take responsibility for commanding the arm. Arms the RT-side watchdog.
   /// @return false if another client already holds control.

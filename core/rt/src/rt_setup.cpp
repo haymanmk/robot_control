@@ -17,14 +17,14 @@
 namespace rc::rt {
 namespace {
 
-constexpr std::uint64_t kUnlimited = UINT64_MAX;
+constexpr std::uint64_t unlimited = UINT64_MAX;
 
 std::uint64_t rlim_to_u64(rlim_t value) noexcept {
-  return value == RLIM_INFINITY ? kUnlimited : static_cast<std::uint64_t>(value);
+  return value == RLIM_INFINITY ? unlimited : static_cast<std::uint64_t>(value);
 }
 
 std::string mib(std::uint64_t bytes) {
-  if (bytes == kUnlimited) {
+  if (bytes == unlimited) {
     return "unlimited";
   }
   char text[32];
@@ -55,8 +55,8 @@ bool detect_cap_ipc_lock() {
   while (std::getline(status_file, line)) {
     if (line.compare(0, 7, "CapEff:") == 0) {
       const unsigned long long capabilities = std::strtoull(line.c_str() + 7, nullptr, 16);
-      constexpr int kCapIpcLock = 14;
-      return (capabilities >> kCapIpcLock) & 1ULL;
+      constexpr int cap_ipc_lock_bit = 14;
+      return (capabilities >> cap_ipc_lock_bit) & 1ULL;
     }
   }
   return false;
@@ -90,7 +90,7 @@ std::string MemoryFigures::format() const {
   out << '\n';
   out << "  memory    mapped " << mib(vm_size) << ", resident " << mib(vm_rss) << ", locked "
      << mib(vm_locked) << '\n';
-  out << "  rtprio    hard limit " << (rtprio_hard == kUnlimited ? 99 : rtprio_hard) << '\n';
+  out << "  rtprio    hard limit " << (rtprio_hard == unlimited ? 99 : rtprio_hard) << '\n';
   return out.str();
 }
 
@@ -168,7 +168,7 @@ RtStatus apply_realtime(const RtOptions& options) noexcept {
   MemoryFigures before = MemoryFigures::read();
 
   if (options.priority > 0) {
-    if (before.rtprio_hard != kUnlimited && static_cast<std::uint64_t>(options.priority) > before.rtprio_hard) {
+    if (before.rtprio_hard != unlimited && static_cast<std::uint64_t>(options.priority) > before.rtprio_hard) {
       status.notes.emplace_back("SCHED_FIFO: priority " + std::to_string(options.priority) +
                             " exceeds RLIMIT_RTPRIO hard limit " +
                             std::to_string(before.rtprio_hard) +
@@ -195,7 +195,7 @@ RtStatus apply_realtime(const RtOptions& options) noexcept {
   if (options.lock_memory) {
     if (options.raise_soft_memlock && before.memlock_soft < before.memlock_hard) {
       rlimit limit{};
-      limit.rlim_cur = before.memlock_hard == kUnlimited ? RLIM_INFINITY
+      limit.rlim_cur = before.memlock_hard == unlimited ? RLIM_INFINITY
                                                       : static_cast<rlim_t>(before.memlock_hard);
       limit.rlim_max = limit.rlim_cur;
       if (::setrlimit(RLIMIT_MEMLOCK, &limit) == 0) {
@@ -210,7 +210,7 @@ RtStatus apply_realtime(const RtOptions& options) noexcept {
     // that dies on its first heap or stack growth is worse than one that
     // reports honestly that it is running unlocked.
     const std::uint64_t needed = before.vm_size + options.headroom_bytes;
-    const bool limited = !before.has_cap_ipc_lock && before.memlock_soft != kUnlimited;
+    const bool limited = !before.has_cap_ipc_lock && before.memlock_soft != unlimited;
     if (limited && needed > before.memlock_soft) {
       status.notes.emplace_back(
           "mlockall: REFUSED -- this process maps " + mib(before.vm_size) + " and needs " +

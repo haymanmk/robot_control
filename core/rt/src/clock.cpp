@@ -6,12 +6,12 @@
 namespace rc::rt {
 namespace {
 
-constexpr std::int64_t kNsPerSec = 1'000'000'000;
+constexpr std::int64_t nanoseconds_per_second = 1'000'000'000;
 
 timespec to_timespec(Nanos duration) noexcept {
   timespec spec{};
-  spec.tv_sec = static_cast<time_t>(duration.count() / kNsPerSec);
-  spec.tv_nsec = static_cast<long>(duration.count() % kNsPerSec);
+  spec.tv_sec = static_cast<time_t>(duration.count() / nanoseconds_per_second);
+  spec.tv_nsec = static_cast<long>(duration.count() % nanoseconds_per_second);
   return spec;
 }
 
@@ -20,7 +20,7 @@ timespec to_timespec(Nanos duration) noexcept {
 Nanos monotonic_now() noexcept {
   timespec spec{};
   ::clock_gettime(CLOCK_MONOTONIC, &spec);
-  return Nanos{static_cast<std::int64_t>(spec.tv_sec) * kNsPerSec + spec.tv_nsec};
+  return Nanos{static_cast<std::int64_t>(spec.tv_sec) * nanoseconds_per_second + spec.tv_nsec};
 }
 
 void sleep_until(Nanos deadline) noexcept {

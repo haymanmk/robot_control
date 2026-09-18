@@ -10,25 +10,25 @@
 
 namespace rc::test {
 
-inline int g_failures = 0;
-inline int g_checks = 0;
+inline int failures = 0;
+inline int checks = 0;
 
 inline void report(bool ok, const char* expression, const char* file, int line,
                    const std::string& detail = {}) {
-  ++g_checks;
+  ++checks;
   if (!ok) {
-    ++g_failures;
+    ++failures;
     std::fprintf(stderr, "FAIL %s:%d  %s%s%s\n", file, line, expression,
                  detail.empty() ? "" : "  -- ", detail.c_str());
   }
 }
 
 inline int finish(const char* suite) {
-  if (g_failures == 0) {
-    std::printf("PASS %s (%d checks)\n", suite, g_checks);
+  if (failures == 0) {
+    std::printf("PASS %s (%d checks)\n", suite, checks);
     return 0;
   }
-  std::fprintf(stderr, "FAILED %s: %d of %d checks failed\n", suite, g_failures, g_checks);
+  std::fprintf(stderr, "FAILED %s: %d of %d checks failed\n", suite, failures, checks);
   return 1;
 }
 

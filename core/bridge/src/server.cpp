@@ -6,12 +6,12 @@ RegionError BridgeServer::open(const std::string& name, std::uint32_t control_pe
                                bool lock_memory) {
   const RegionError error =
       SharedRegion::create(name, region_, control_period_ns, timeout_cycles_, lock_memory);
-  // kMlockFailed still yields a usable region; the caller decides whether a
+  // mlock_failed still yields a usable region; the caller decides whether a
   // pageable bridge is acceptable. Every other error leaves region_ invalid.
-  if (error != RegionError::kOk && error != RegionError::kMlockFailed) {
+  if (error != RegionError::ok && error != RegionError::mlock_failed) {
     return error;
   }
-  region_.get()->header.server_state.store(static_cast<std::uint32_t>(ServerState::kIdle),
+  region_.get()->header.server_state.store(static_cast<std::uint32_t>(ServerState::idle),
                                            std::memory_order_release);
   return error;
 }
@@ -112,7 +112,7 @@ void BridgeServer::set_state(ServerState state) noexcept {
 
 ServerState BridgeServer::state() const noexcept {
   if (!region_.valid()) {
-    return ServerState::kShutdown;
+    return ServerState::shutdown;
   }
   return static_cast<ServerState>(
       region_.get()->header.server_state.load(std::memory_order_acquire));
@@ -142,7 +142,7 @@ std::uint64_t BridgeServer::watchdog_trips() const noexcept {
 
 void BridgeServer::close() noexcept {
   if (region_.valid()) {
-    set_state(ServerState::kShutdown);
+    set_state(ServerState::shutdown);
     SharedRegion::unlink(region_.name());
   }
   region_ = SharedRegion{};

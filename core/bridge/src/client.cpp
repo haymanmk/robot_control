@@ -93,7 +93,7 @@ bool BridgeClient::state(rc::telemetry::StateSnapshot& out) const noexcept {
 
 ServerState BridgeClient::server_state() const noexcept {
   if (!region_.valid()) {
-    return ServerState::kShutdown;
+    return ServerState::shutdown;
   }
   return static_cast<ServerState>(
       region_.get()->header.server_state.load(std::memory_order_acquire));

@@ -47,7 +47,7 @@ def load(prefix: str):
         raise SystemExit(
             f"record size mismatch: the file says {declared} bytes, this script "
             f"expects {RECORD_SIZE}. The C++ struct changed -- update this script "
-            f"and bump kLayoutVersion."
+            f"and bump current_layout_version."
         )
 
     raw = bin_path.read_bytes()

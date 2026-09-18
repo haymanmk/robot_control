@@ -47,7 +47,7 @@ namespace rc::rt {
 /// writing `tail_` does not invalidate the line the consumer is reading
 /// `head_` from -- false sharing turns a wait-free queue into a cache-line
 /// ping-pong and can cost an order of magnitude.
-inline constexpr std::size_t kCacheLine = 64;
+inline constexpr std::size_t cache_line_bytes = 64;
 
 /// Single-producer / single-consumer bounded queue. Wait-free on both sides,
 /// allocation-free, and free of pointers so it works in shared memory mapped
@@ -74,7 +74,7 @@ class SpscRing {
     if (write_index - read_index >= Capacity) {
       return false;  // full
     }
-    slots_[write_index & kMask] = value;
+    slots_[write_index & mask] = value;
     tail_.store(write_index + 1, std::memory_order_release);
     return true;
   }
@@ -86,7 +86,7 @@ class SpscRing {
     if (read_index == write_index) {
       return false;  // empty
     }
-    out = slots_[read_index & kMask];
+    out = slots_[read_index & mask];
     head_.store(read_index + 1, std::memory_order_release);
     return true;
   }
@@ -121,11 +121,11 @@ class SpscRing {
   }
 
  private:
-  static constexpr std::uint64_t kMask = Capacity - 1;
+  static constexpr std::uint64_t mask = Capacity - 1;
 
-  alignas(kCacheLine) std::atomic<std::uint64_t> head_{0};
-  alignas(kCacheLine) std::atomic<std::uint64_t> tail_{0};
-  alignas(kCacheLine) T slots_[Capacity]{};
+  alignas(cache_line_bytes) std::atomic<std::uint64_t> head_{0};
+  alignas(cache_line_bytes) std::atomic<std::uint64_t> tail_{0};
+  alignas(cache_line_bytes) T slots_[Capacity]{};
 };
 
 static_assert(std::atomic<std::uint64_t>::is_always_lock_free,

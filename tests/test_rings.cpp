@@ -56,12 +56,12 @@ void test_spsc_wraparound() {
 /// The real test: a producer and a consumer on different threads. Every value
 /// must arrive exactly once, in order, with nothing torn or duplicated.
 void test_spsc_concurrent() {
-  constexpr std::uint64_t kCount = 200'000;
+  constexpr std::uint64_t count = 200'000;
   SpscRing<std::uint64_t, 1024> ring;
   std::atomic<bool> producer_done{false};
 
   std::thread producer([&] {
-    for (std::uint64_t value = 0; value < kCount; ++value) {
+    for (std::uint64_t value = 0; value < count; ++value) {
       while (!ring.push(value)) {
         std::this_thread::yield();  // test code may spin; the RT path must not
       }
@@ -72,7 +72,7 @@ void test_spsc_concurrent() {
   std::uint64_t expected = 0;
   std::uint64_t out = 0;
   bool ordered = true;
-  while (expected < kCount) {
+  while (expected < count) {
     if (ring.pop(out)) {
       if (out != expected) {
         ordered = false;
@@ -86,7 +86,7 @@ void test_spsc_concurrent() {
   producer.join();
 
   CHECK_MSG(ordered, "values must arrive in order with none lost or duplicated");
-  CHECK_EQ(expected, kCount);
+  CHECK_EQ(expected, count);
 }
 
 struct Wide {

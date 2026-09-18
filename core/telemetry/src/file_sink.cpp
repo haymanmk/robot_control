@@ -10,7 +10,7 @@ namespace rc::telemetry {
 namespace {
 /// One drain pulls at most this many records. Bounds the time spent holding the
 /// consumer side, and bounds the buffer we allocate once up front.
-constexpr std::size_t kDrainBatch = 1024;
+constexpr std::size_t drain_batch = 1024;
 }  // namespace
 
 FileSink::~FileSink() {
@@ -57,7 +57,7 @@ bool FileSink::open(const std::string& path_prefix, const Provenance& provenance
   meta << json;
 
   // Allocate the drain buffer once, here, so the draining thread never does.
-  buffer_.resize(kDrainBatch);
+  buffer_.resize(drain_batch);
   written_.store(0, std::memory_order_relaxed);
   return true;
 }

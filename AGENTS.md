@@ -54,7 +54,7 @@ If you are unsure whether a function is on the cyclic path, assume it is.
 
 `core/bridge/include/rc/bridge/layout.hpp` and `core/telemetry/include/rc/telemetry/record.hpp`
 are memcpy'd across a process boundary and written to disk. Any change to a
-field, its order, or its size requires bumping `kLayoutVersion`, and the
+field, its order, or its size requires bumping `current_layout_version`, and the
 `static_assert`s on record sizes are budgets, not accidents. Records must stay
 trivially copyable with no pointers.
 

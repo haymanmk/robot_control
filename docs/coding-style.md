@@ -2,7 +2,7 @@
 
 This is the naming rule for all C++ in `core/` and `app/`, and for Python in
 `tools/`, `bench/` and `notebooks/` where the same idea applies. It exists
-because the code base has drifted into a mix of styles (`kMaxJoints`,
+because the code base has drifted into a mix of styles (`max_joints`,
 `member_`, `cfg`, `Nanos`, `rt_status`) and a reader should never have to guess
 which convention a name follows.
 
@@ -140,9 +140,9 @@ in three steps:
    inside the files your change already modifies. A renamed identifier that
    is part of a public header or a shared-memory layout counts as an API change
    and gets its own commit so the diff is reviewable.
-3. **Cross-cutting renames** (namespaces, directory names, the `rc/` include
-   prefix, the `kLayoutVersion` family) happen in dedicated, mechanical commits
-   that change nothing else. Do not mix them into a behavioural change.
+3. **Cross-cutting renames** (namespaces, directory names, the include
+   prefix, the shared-memory field names) happen in dedicated, mechanical
+   commits that change nothing else. Do not mix them into a behavioural change.
 
 Do not rename anything in [`core/bridge/include/rc/bridge/layout.hpp`](../core/bridge/include/rc/bridge/layout.hpp)
 or [`core/telemetry/include/rc/telemetry/record.hpp`](../core/telemetry/include/rc/telemetry/record.hpp)

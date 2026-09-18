@@ -36,14 +36,14 @@ using telemetry::ControlMode;
 
 namespace {
 
-constexpr unsigned kJoints = 6;
-constexpr double kRateHz = 500.0;
+constexpr unsigned simulated_joints = 6;
+constexpr double rate_hertz = 500.0;
 
 /// Set by the signal handler and read by the loop. The handler itself does
 /// nothing else: async-signal-safety means setting a flag, never doing work.
-std::atomic<bool> g_shutdown{false};
+std::atomic<bool> shutdown_requested{false};
 
-void on_signal(int) { g_shutdown.store(true, std::memory_order_release); }
+void on_signal(int) { shutdown_requested.store(true, std::memory_order_release); }
 
 void install_signal_handlers() {
   struct sigaction action {};
@@ -57,12 +57,12 @@ void install_signal_handlers() {
 /// Enough to produce plausible telemetry; it is not a dynamics model and does
 /// not pretend to be one — core/model owns that.
 struct Plant {
-  double pos[kJoints]{};
-  double vel[kJoints]{};
+  double pos[simulated_joints]{};
+  double vel[simulated_joints]{};
 
   void step(const double* target, double time_step, double bandwidth_hertz) {
     const double alpha = 1.0 - std::exp(-2.0 * M_PI * bandwidth_hertz * time_step);
-    for (unsigned joint = 0; joint < kJoints; ++joint) {
+    for (unsigned joint = 0; joint < simulated_joints; ++joint) {
       const double next = pos[joint] + (target[joint] - pos[joint]) * alpha;
       vel[joint] = (next - pos[joint]) / time_step;
       pos[joint] = next;
@@ -79,14 +79,14 @@ int run_server() {
   }
 
   bridge::BridgeServer server;
-  const auto period_nanoseconds = static_cast<std::uint32_t>(1e9 / kRateHz);
-  const bridge::RegionError error = server.open(bridge::kDefaultRegionName, period_nanoseconds,
+  const auto period_nanoseconds = static_cast<std::uint32_t>(1e9 / rate_hertz);
+  const bridge::RegionError error = server.open(bridge::default_region_name, period_nanoseconds,
                                               /*lock_memory=*/true);
-  if (error != bridge::RegionError::kOk && error != bridge::RegionError::kMlockFailed) {
+  if (error != bridge::RegionError::ok && error != bridge::RegionError::mlock_failed) {
     std::fprintf(stderr, "bridge open failed: %s\n", to_string(error));
     return 1;
   }
-  if (error == bridge::RegionError::kMlockFailed) {
+  if (error == bridge::RegionError::mlock_failed) {
     std::fprintf(stderr, "warning: %s -- the bridge is pageable, timing will be worse\n",
                  to_string(error));
   }
@@ -94,7 +94,7 @@ int run_server() {
 
   telemetry::Provenance provenance = telemetry::Provenance::collect();
   provenance.label = "rc_core_demo (simulated plant)";
-  provenance.control_rate_hz = kRateHz;
+  provenance.control_rate_hz = rate_hertz;
   std::printf("rc_core_demo server\n%s", provenance.to_summary().c_str());
   std::string why_not;
   if (!provenance.suitable_as_baseline(why_not)) {
@@ -111,11 +111,11 @@ int run_server() {
   std::printf("  telemetry %s.bin (+ .json)\n  waiting for a client...\n\n", prefix.c_str());
 
   Plant plant;
-  double target[kJoints]{};
-  double hold[kJoints]{};
-  ControlMode mode = ControlMode::kIdle;
+  double target[simulated_joints]{};
+  double hold[simulated_joints]{};
+  ControlMode mode = ControlMode::idle;
   std::int64_t stop_started_ns = 0;
-  constexpr std::int64_t kRampNs = 300'000'000;  // ADR-0005 default T_stop
+  constexpr std::int64_t ramp_nanoseconds = 300'000'000;  // ADR-0005 default T_stop
 
   rt::CyclicConfig config;
   config.period = rt::Nanos{period_nanoseconds};
@@ -131,9 +131,9 @@ int run_server() {
 
   const rt::CyclicReport report = task.run_until(stop_loop, [&](std::uint64_t cycle, rt::Nanos period) {
     const rt::Nanos now = rt::monotonic_now();
-    std::uint32_t flags = telemetry::kFlagNone;
+    std::uint32_t flags = telemetry::flag_none;
     if (telemetry_lost_pending) {
-      flags |= telemetry::kFlagTelemetryLost;
+      flags |= telemetry::flag_telemetry_lost;
       telemetry_lost_pending = false;
     }
 
@@ -142,13 +142,13 @@ int run_server() {
       std::printf("[cycle %llu] WATCHDOG: client lost -- Category 2 stop\n",
                   static_cast<unsigned long long>(cycle));
       std::fflush(stdout);
-      // kFlagClientLost is what lets the flight recorder distinguish "the
-      // client died" from "the client asked us to stop": both reach kStopping.
-      flags |= telemetry::kFlagClientLost;
-      mode = ControlMode::kStopping;
+      // flag_client_lost is what lets the flight recorder distinguish "the
+      // client died" from "the client asked us to stop": both reach stopping.
+      flags |= telemetry::flag_client_lost;
+      mode = ControlMode::stopping;
       stop_started_ns = now.count();
       std::memcpy(hold, plant.pos, sizeof(hold));
-      server.set_state(ServerState::kStopping);
+      server.set_state(ServerState::stopping);
     }
 
     // ── 2. commands, only while a client is genuinely in control ──
@@ -156,36 +156,36 @@ int run_server() {
     while (server.poll_command(command)) {
       ++commands_seen;
       const auto type = static_cast<CommandType>(command.type);
-      if (mode == ControlMode::kStopping || mode == ControlMode::kHolding) {
+      if (mode == ControlMode::stopping || mode == ControlMode::holding) {
         // A stopped arm does not accept setpoints. Recovery is an explicit,
         // operator-initiated act (ADR-0005 §4) -- and only once the ramp has
         // finished, never mid-deceleration.
-        if (type == CommandType::kClearFault && mode == ControlMode::kHolding) {
+        if (type == CommandType::clear_fault && mode == ControlMode::holding) {
           std::printf("[cycle %llu] fault cleared by operator; idle\n",
                       static_cast<unsigned long long>(cycle));
           std::fflush(stdout);
-          mode = ControlMode::kIdle;
-          server.set_state(ServerState::kIdle);
+          mode = ControlMode::idle;
+          server.set_state(ServerState::idle);
         }
         continue;
       }
       switch (type) {
-        case CommandType::kSetTarget:
-          for (unsigned joint = 0; joint < kJoints && joint < command.joint_count; ++joint) {
+        case CommandType::set_target:
+          for (unsigned joint = 0; joint < simulated_joints && joint < command.joint_count; ++joint) {
             target[joint] = static_cast<double>(command.pos[joint]);
           }
-          mode = ControlMode::kMit;
-          server.set_state(ServerState::kControlled);
+          mode = ControlMode::mit;
+          server.set_state(ServerState::controlled);
           break;
-        case CommandType::kStop:
-          mode = ControlMode::kStopping;
+        case CommandType::stop:
+          mode = ControlMode::stopping;
           stop_started_ns = now.count();
           std::memcpy(hold, plant.pos, sizeof(hold));
-          server.set_state(ServerState::kStopping);
+          server.set_state(ServerState::stopping);
           break;
-        case CommandType::kDisable:
-          mode = ControlMode::kIdle;
-          server.set_state(ServerState::kIdle);
+        case CommandType::disable:
+          mode = ControlMode::idle;
+          server.set_state(ServerState::idle);
           break;
         default:
           break;
@@ -193,24 +193,24 @@ int run_server() {
     }
 
     // ── 3. the Category 2 ramp: decelerate to the frozen pose, then hold ──
-    if (mode == ControlMode::kStopping) {
-      flags |= telemetry::kFlagStopping;
+    if (mode == ControlMode::stopping) {
+      flags |= telemetry::flag_stopping;
       const std::int64_t elapsed = now.count() - stop_started_ns;
-      for (unsigned joint = 0; joint < kJoints; ++joint) {
+      for (unsigned joint = 0; joint < simulated_joints; ++joint) {
         target[joint] = hold[joint];  // decelerate toward where we were when it tripped
       }
-      if (elapsed >= kRampNs) {
-        mode = ControlMode::kHolding;
+      if (elapsed >= ramp_nanoseconds) {
+        mode = ControlMode::holding;
         // Correct the flag in the same cycle: a record that says mode=holding
         // while flagged stopping is a lie to whoever reads the telemetry later.
-        flags = (flags & ~telemetry::kFlagStopping) | telemetry::kFlagHolding;
-        server.set_state(ServerState::kHolding);
+        flags = (flags & ~telemetry::flag_stopping) | telemetry::flag_holding;
+        server.set_state(ServerState::holding);
         std::printf("[cycle %llu] holding compliantly at the stop pose\n",
                     static_cast<unsigned long long>(cycle));
         std::fflush(stdout);
       }
-    } else if (mode == ControlMode::kHolding) {
-      flags |= telemetry::kFlagHolding;
+    } else if (mode == ControlMode::holding) {
+      flags |= telemetry::flag_holding;
     }
 
     // ── 4. plant + publish ──
@@ -220,32 +220,32 @@ int run_server() {
     record.cycle = cycle;
     record.deadline_ns = now.count();
     record.wake_ns = now.count();
-    record.joint_count = kJoints;
+    record.joint_count = simulated_joints;
     record.mode = static_cast<std::uint32_t>(mode);
     record.flags = flags;
-    for (unsigned joint = 0; joint < kJoints; ++joint) {
+    for (unsigned joint = 0; joint < simulated_joints; ++joint) {
       record.cmd_pos[joint] = static_cast<float>(target[joint]);
       record.meas_pos[joint] = static_cast<float>(plant.pos[joint]);
       record.meas_vel[joint] = static_cast<float>(plant.vel[joint]);
     }
     if (!server.publish(record)) {
       telemetry_lost_pending = true;  // surfaces on the next record
-      flags |= telemetry::kFlagTelemetryLost;  // and on this cycle's live snapshot
+      flags |= telemetry::flag_telemetry_lost;  // and on this cycle's live snapshot
     }
 
     telemetry::StateSnapshot snapshot{};
     snapshot.cycle = cycle;
     snapshot.wake_ns = now.count();
-    snapshot.joint_count = kJoints;
+    snapshot.joint_count = simulated_joints;
     snapshot.mode = record.mode;
     snapshot.flags = flags;
-    for (unsigned joint = 0; joint < kJoints; ++joint) {
+    for (unsigned joint = 0; joint < simulated_joints; ++joint) {
       snapshot.pos[joint] = record.meas_pos[joint];
       snapshot.vel[joint] = record.meas_vel[joint];
     }
     server.publish_snapshot(snapshot);
 
-    if (g_shutdown.load(std::memory_order_acquire)) {
+    if (shutdown_requested.load(std::memory_order_acquire)) {
       stop_loop.store(true, std::memory_order_release);
     }
   });
@@ -269,11 +269,11 @@ int run_client(bool clear_fault) {
   install_signal_handlers();
   bridge::BridgeClient client;
   bridge::RegionError error = client.attach();
-  for (int attempt = 0; error == bridge::RegionError::kNotReady && attempt < 50; ++attempt) {
+  for (int attempt = 0; error == bridge::RegionError::not_ready && attempt < 50; ++attempt) {
     ::usleep(10'000);  // server is mid-open(); this is the retryable case
     error = client.attach();
   }
-  if (error != bridge::RegionError::kOk) {
+  if (error != bridge::RegionError::ok) {
     std::fprintf(stderr, "attach failed: %s\n", to_string(error));
     return 1;
   }
@@ -281,7 +281,7 @@ int run_client(bool clear_fault) {
     std::fprintf(stderr, "another client holds control\n");
     return 1;
   }
-  if (client.server_state() == ServerState::kHolding) {
+  if (client.server_state() == ServerState::holding) {
     if (!clear_fault) {
       std::fprintf(stderr,
                    "server is HOLDING after a fault. Recovery is deliberate: re-run with "
@@ -289,9 +289,9 @@ int run_client(bool clear_fault) {
       return 3;
     }
     bridge::CommandRecord clear{};
-    clear.type = static_cast<std::uint32_t>(CommandType::kClearFault);
+    clear.type = static_cast<std::uint32_t>(CommandType::clear_fault);
     if (!client.send(clear)) {
-      std::fprintf(stderr, "could not send kClearFault\n");
+      std::fprintf(stderr, "could not send clear_fault\n");
       return 1;
     }
     std::printf("client: fault cleared\n");
@@ -301,11 +301,11 @@ int run_client(bool clear_fault) {
               client.control_period_ns(), ::getpid());
 
   double phase = 0.0;
-  while (!g_shutdown.load(std::memory_order_acquire)) {
+  while (!shutdown_requested.load(std::memory_order_acquire)) {
     bridge::CommandRecord command{};
-    command.type = static_cast<std::uint32_t>(CommandType::kSetTarget);
-    command.joint_count = kJoints;
-    for (unsigned joint = 0; joint < kJoints; ++joint) {
+    command.type = static_cast<std::uint32_t>(CommandType::set_target);
+    command.joint_count = simulated_joints;
+    for (unsigned joint = 0; joint < simulated_joints; ++joint) {
       command.pos[joint] = static_cast<float>(0.4 * std::sin(phase + 0.3 * joint));
     }
     if (!client.send(command)) {
