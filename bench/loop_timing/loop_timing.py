@@ -37,7 +37,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 
-NS_PER_S = 1_000_000_000
+NANOSECONDS_PER_SECOND = 1_000_000_000
 CLOCK_MONOTONIC = 1
 TIMER_ABSTIME = 1
 
@@ -60,23 +60,24 @@ EINTR = 4
 MCL_CURRENT, MCL_FUTURE = 1, 2
 
 
-def sleep_until_ns(deadline_ns: int) -> None:
-    """Block until CLOCK_MONOTONIC reaches deadline_ns.
+def sleep_until_nanoseconds(deadline_nanoseconds: int) -> None:
+    """Block until CLOCK_MONOTONIC reaches deadline_nanoseconds.
 
     Unlike time.sleep(), this takes an *absolute* target, so the kernel's own
     wake-up latency is not added to our period -- it is absorbed. Note that
     clock_nanosleep returns the error number directly rather than setting errno.
     """
-    ts = _Timespec(deadline_ns // NS_PER_S, deadline_ns % NS_PER_S)
+    spec = _Timespec(deadline_nanoseconds // NANOSECONDS_PER_SECOND,
+                     deadline_nanoseconds % NANOSECONDS_PER_SECOND)
     while True:
-        rc = _libc.clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, ctypes.byref(ts), None)
-        if rc == 0:
+        result = _libc.clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, ctypes.byref(spec), None)
+        if result == 0:
             return
-        if rc != EINTR:
-            raise OSError(rc, f"clock_nanosleep failed: {os.strerror(rc)}")
+        if result != EINTR:
+            raise OSError(result, f"clock_nanosleep failed: {os.strerror(result)}")
 
 
-def now_ns() -> int:
+def now_nanoseconds() -> int:
     return time.clock_gettime_ns(time.CLOCK_MONOTONIC)
 
 
@@ -88,9 +89,9 @@ def now_ns() -> int:
 # scheduling effects we are trying to see.
 # ---------------------------------------------------------------------------
 
-def busy_for_us(duration_us: float) -> None:
-    end = now_ns() + int(duration_us * 1000)
-    while now_ns() < end:
+def busy_for_microseconds(duration_microseconds: float) -> None:
+    end = now_nanoseconds() + int(duration_microseconds * 1000)
+    while now_nanoseconds() < end:
         pass
 
 
@@ -98,26 +99,26 @@ def busy_for_us(duration_us: float) -> None:
 # Loop strategies. Each returns the list of per-cycle wake timestamps (ns).
 # ---------------------------------------------------------------------------
 
-def loop_relative_sleep(cycles: int, period_ns: int, work_us: float) -> list[int]:
+def loop_relative_sleep(cycles: int, period_nanoseconds: int, work_microseconds: float) -> list[int]:
     """The vendor pattern: sleep(dt - elapsed).
 
     Every cycle pays the kernel's wake-up latency *on top of* the period, and
     never gets it back. Expect the loop to run slow, and the error to accumulate
     linearly for as long as it runs.
     """
-    dt = period_ns / NS_PER_S
+    period_seconds = period_nanoseconds / NANOSECONDS_PER_SECOND
     stamps = []
     for _ in range(cycles):
-        t0 = time.perf_counter()
-        stamps.append(now_ns())
-        busy_for_us(work_us)
-        remaining = dt - (time.perf_counter() - t0)
+        start = time.perf_counter()
+        stamps.append(now_nanoseconds())
+        busy_for_microseconds(work_microseconds)
+        remaining = period_seconds - (time.perf_counter() - start)
         if remaining > 0:
             time.sleep(remaining)
     return stamps
 
 
-def loop_absolute_sleep(cycles: int, period_ns: int, work_us: float) -> list[int]:
+def loop_absolute_sleep(cycles: int, period_nanoseconds: int, work_microseconds: float) -> list[int]:
     """Phase-locked, but still using time.sleep().
 
     Deadlines come from a fixed origin (start + n*period), so drift is
@@ -125,18 +126,18 @@ def loop_absolute_sleep(cycles: int, period_ns: int, work_us: float) -> list[int
     to the timer resolution, so jitter remains, but it no longer compounds.
     """
     stamps = []
-    origin = now_ns()
-    for n in range(cycles):
-        stamps.append(now_ns())
-        busy_for_us(work_us)
-        deadline = origin + (n + 1) * period_ns
-        remaining = (deadline - now_ns()) / NS_PER_S
+    origin = now_nanoseconds()
+    for cycle in range(cycles):
+        stamps.append(now_nanoseconds())
+        busy_for_microseconds(work_microseconds)
+        deadline = origin + (cycle + 1) * period_nanoseconds
+        remaining = (deadline - now_nanoseconds()) / NANOSECONDS_PER_SECOND
         if remaining > 0:
             time.sleep(remaining)
     return stamps
 
 
-def loop_clock_nanosleep(cycles: int, period_ns: int, work_us: float) -> list[int]:
+def loop_clock_nanosleep(cycles: int, period_nanoseconds: int, work_microseconds: float) -> list[int]:
     """Phase-locked with an absolute-deadline syscall -- the real-time idiom.
 
     This is what a PREEMPT_RT cyclic task looks like in any language: compute a
@@ -144,11 +145,11 @@ def loop_clock_nanosleep(cycles: int, period_ns: int, work_us: float) -> list[in
     construction, and jitter reduced to the scheduler's own.
     """
     stamps = []
-    origin = now_ns()
-    for n in range(cycles):
-        stamps.append(now_ns())
-        busy_for_us(work_us)
-        sleep_until_ns(origin + (n + 1) * period_ns)
+    origin = now_nanoseconds()
+    for cycle in range(cycles):
+        stamps.append(now_nanoseconds())
+        busy_for_microseconds(work_microseconds)
+        sleep_until_nanoseconds(origin + (cycle + 1) * period_nanoseconds)
     return stamps
 
 
@@ -166,63 +167,63 @@ STRATEGIES = {
 @dataclass
 class Result:
     name: str
-    period_ns: int
+    period_nanoseconds: int
     cycles: int
-    errors_us: list[float] = field(default_factory=list)  # period error per cycle
-    drift_us: float = 0.0                                 # total accumulated
+    errors_microseconds: list[float] = field(default_factory=list)  # period error per cycle
+    drift_microseconds: float = 0.0                                 # total accumulated
     overruns: int = 0                                     # cycles late by >10%
 
     @property
     def stats(self) -> dict:
-        e = sorted(self.errors_us)
-        n = len(e)
-        if n == 0:
+        errors = sorted(self.errors_microseconds)
+        count = len(errors)
+        if count == 0:
             return {}
 
-        def pct(p: float) -> float:
-            return e[min(n - 1, int(p * n))]
+        def percentile(fraction: float) -> float:
+            return errors[min(count - 1, int(fraction * count))]
 
         return {
-            "min_us": e[0],
-            "mean_us": sum(e) / n,
-            "p50_us": pct(0.50),
-            "p99_us": pct(0.99),
-            "p999_us": pct(0.999),
-            "max_us": e[-1],
-            "drift_us": self.drift_us,
+            "minimum_microseconds": errors[0],
+            "mean_microseconds": sum(errors) / count,
+            "p50_microseconds": percentile(0.50),
+            "p99_microseconds": percentile(0.99),
+            "p999_microseconds": percentile(0.999),
+            "maximum_microseconds": errors[-1],
+            "drift_microseconds": self.drift_microseconds,
             "overruns": self.overruns,
         }
 
 
-def analyse(name: str, stamps: list[int], period_ns: int) -> Result:
-    r = Result(name=name, period_ns=period_ns, cycles=len(stamps))
-    overrun_threshold_us = period_ns / 1000 * 0.10
-    for i in range(1, len(stamps)):
-        err_us = ((stamps[i] - stamps[i - 1]) - period_ns) / 1000.0
-        r.errors_us.append(err_us)
-        if abs(err_us) > overrun_threshold_us:
-            r.overruns += 1
+def analyse(name: str, stamps: list[int], period_nanoseconds: int) -> Result:
+    result = Result(name=name, period_nanoseconds=period_nanoseconds, cycles=len(stamps))
+    overrun_threshold_microseconds = period_nanoseconds / 1000 * 0.10
+    for index in range(1, len(stamps)):
+        error_microseconds = ((stamps[index] - stamps[index - 1]) - period_nanoseconds) / 1000.0
+        result.errors_microseconds.append(error_microseconds)
+        if abs(error_microseconds) > overrun_threshold_microseconds:
+            result.overruns += 1
     # Drift is the end-to-end error, not the sum of per-cycle errors: it answers
     # "after N cycles, how far from the ideal schedule are we?"
-    ideal_ns = period_ns * (len(stamps) - 1)
-    r.drift_us = ((stamps[-1] - stamps[0]) - ideal_ns) / 1000.0
-    return r
+    ideal_nanoseconds = period_nanoseconds * (len(stamps) - 1)
+    result.drift_microseconds = ((stamps[-1] - stamps[0]) - ideal_nanoseconds) / 1000.0
+    return result
 
 
-def histogram(errors_us: list[float], width: int = 52, bins: int = 13) -> str:
-    lo, hi = min(errors_us), max(errors_us)
-    if hi - lo < 1e-9:
-        return f"    all samples at {lo:+.1f} us\n"
-    step = (hi - lo) / bins
+def histogram(errors_microseconds: list[float], width: int = 52, bins: int = 13) -> str:
+    low, high = min(errors_microseconds), max(errors_microseconds)
+    if high - low < 1e-9:
+        return f"    all samples at {low:+.1f} us\n"
+    step = (high - low) / bins
     counts = [0] * bins
-    for e in errors_us:
-        counts[min(bins - 1, int((e - lo) / step))] += 1
+    for error in errors_microseconds:
+        counts[min(bins - 1, int((error - low) / step))] += 1
     peak = max(counts) or 1
     out = []
-    for i, c in enumerate(counts):
-        edge = lo + i * step
-        bar = "#" * int(width * c / peak)
-        out.append(f"    {edge:+9.1f} us | {bar:<{width}} {c}")
+    for index, count in enumerate(counts):
+        edge = low + index * step
+        bar = "#" * int(width * count / peak)
+        out.append(f"    {edge:+9.1f} us | {bar:<{width}} {count}")
     return "\n".join(out) + "\n"
 
 
@@ -240,48 +241,48 @@ def try_realtime(priority: int = 80) -> list[str]:
     try:
         os.sched_setscheduler(0, os.SCHED_FIFO, os.sched_param(priority))
         notes.append(f"SCHED_FIFO priority {priority}: OK")
-    except (OSError, PermissionError) as exc:
-        notes.append(f"SCHED_FIFO: FAILED ({exc.strerror}) -- run with sudo, or "
+    except (OSError, PermissionError) as error:
+        notes.append(f"SCHED_FIFO: FAILED ({error.strerror}) -- run with sudo, or "
                      f"grant CAP_SYS_NICE / raise RLIMIT_RTPRIO in limits.conf")
     if _libc.mlockall(MCL_CURRENT | MCL_FUTURE) == 0:
         notes.append("mlockall(MCL_CURRENT|MCL_FUTURE): OK -- no page faults in the loop")
     else:
-        err = ctypes.get_errno()
-        notes.append(f"mlockall: FAILED ({os.strerror(err)})")
+        error_number = ctypes.get_errno()
+        notes.append(f"mlockall: FAILED ({os.strerror(error_number)})")
     return notes
 
 
 # ---------------------------------------------------------------------------
 
 def main() -> int:
-    p = argparse.ArgumentParser(
+    parser = argparse.ArgumentParser(
         description="Measure control-loop timing drift and jitter.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    p.add_argument("--rate", type=float, default=500.0,
+    parser.add_argument("--rate", type=float, default=500.0,
                    help="loop rate in Hz (default: 500, the reBot B601-RS nominal)")
-    p.add_argument("--seconds", type=float, default=10.0,
+    parser.add_argument("--seconds", type=float, default=10.0,
                    help="duration per strategy (default: 10)")
-    p.add_argument("--work-us", type=float, default=400.0,
+    parser.add_argument("--work-us", dest="work_microseconds", type=float, default=400.0,
                    help="simulated control_fn cost in microseconds (default: 400)")
-    p.add_argument("--rt", action="store_true",
+    parser.add_argument("--rt", action="store_true",
                    help="request SCHED_FIFO and mlockall before measuring")
-    p.add_argument("--only", choices=sorted(STRATEGIES), action="append",
+    parser.add_argument("--only", choices=sorted(STRATEGIES), action="append",
                    help="run only these strategies (repeatable)")
-    p.add_argument("--json", metavar="PATH", help="also write results as JSON")
-    args = p.parse_args()
+    parser.add_argument("--json", metavar="PATH", help="also write results as JSON")
+    args = parser.parse_args()
 
-    period_ns = int(NS_PER_S / args.rate)
+    period_nanoseconds = int(NANOSECONDS_PER_SECOND / args.rate)
     cycles = int(args.seconds * args.rate)
-    if args.work_us > period_ns / 1000:
-        print(f"note: work ({args.work_us:.0f} us) exceeds the period "
-              f"({period_ns/1000:.0f} us) -- the loop cannot keep up by design.\n")
+    if args.work_microseconds > period_nanoseconds / 1000:
+        print(f"note: work ({args.work_microseconds:.0f} us) exceeds the period "
+              f"({period_nanoseconds/1000:.0f} us) -- the loop cannot keep up by design.\n")
 
     print(f"Lab 01 -- control loop timing")
-    print(f"  rate      {args.rate:g} Hz  (period {period_ns/1000:.1f} us)")
+    print(f"  rate      {args.rate:g} Hz  (period {period_nanoseconds/1000:.1f} us)")
     print(f"  cycles    {cycles} per strategy ({args.seconds:g} s)")
-    print(f"  work      {args.work_us:g} us busy-spin per cycle")
+    print(f"  work      {args.work_microseconds:g} us busy-spin per cycle")
     print(f"  kernel    {os.uname().release}")
     if args.rt:
         for note in try_realtime():
@@ -292,37 +293,38 @@ def main() -> int:
     results = []
     for name in chosen:
         print(f"running {name} ...", end=" ", flush=True)
-        stamps = STRATEGIES[name](cycles, period_ns, args.work_us)
-        r = analyse(name, stamps, period_ns)
-        results.append(r)
+        stamps = STRATEGIES[name](cycles, period_nanoseconds, args.work_microseconds)
+        result = analyse(name, stamps, period_nanoseconds)
+        results.append(result)
         print("done")
     print()
 
     header = f"{'strategy':<17}{'mean':>10}{'p99':>10}{'p99.9':>10}{'max':>10}{'drift':>12}{'overruns':>10}"
     print(header)
     print("-" * len(header))
-    for r in results:
-        s = r.stats
-        print(f"{r.name:<17}{s['mean_us']:>9.1f}u{s['p99_us']:>9.1f}u"
-              f"{s['p999_us']:>9.1f}u{s['max_us']:>9.1f}u"
-              f"{s['drift_us']/1000:>11.2f}m{s['overruns']:>10}")
+    for result in results:
+        stats = result.stats
+        print(f"{result.name:<17}{stats['mean_microseconds']:>9.1f}u"
+              f"{stats['p99_microseconds']:>9.1f}u"
+              f"{stats['p999_microseconds']:>9.1f}u{stats['maximum_microseconds']:>9.1f}u"
+              f"{stats['drift_microseconds']/1000:>11.2f}m{stats['overruns']:>10}")
     print("\n  mean/p99/max are per-cycle period error in microseconds (us).")
     print("  drift is total schedule error in milliseconds (ms) after the whole run.")
-    print(f"  overruns are cycles off nominal by more than 10% ({period_ns/10000:.0f} us).\n")
+    print(f"  overruns are cycles off nominal by more than 10% ({period_nanoseconds/10000:.0f} us).\n")
 
-    for r in results:
-        print(f"  {r.name} -- per-cycle period error distribution")
-        print(histogram(r.errors_us))
+    for result in results:
+        print(f"  {result.name} -- per-cycle period error distribution")
+        print(histogram(result.errors_microseconds))
 
     if args.json:
         payload = {
-            "rate_hz": args.rate, "period_ns": period_ns, "cycles": cycles,
-            "work_us": args.work_us, "realtime_requested": args.rt,
+            "rate_hertz": args.rate, "period_nanoseconds": period_nanoseconds, "cycles": cycles,
+            "work_microseconds": args.work_microseconds, "realtime_requested": args.rt,
             "kernel": os.uname().release,
-            "results": {r.name: r.stats for r in results},
+            "results": {result.name: result.stats for result in results},
         }
-        with open(args.json, "w") as f:
-            json.dump(payload, f, indent=2)
+        with open(args.json, "w") as file:
+            json.dump(payload, file, indent=2)
         print(f"  wrote {args.json}")
 
     return 0

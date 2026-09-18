@@ -40,10 +40,10 @@ MODES = {0: "idle", 1: "mit", 2: "pos_vel", 3: "velocity", 4: "stopping", 5: "ho
 
 
 def load(prefix: str):
-    meta_path, binary_path = Path(f"{prefix}.json"), Path(f"{prefix}.bin")
-    meta = json.loads(meta_path.read_text())
+    metadata_path, binary_path = Path(f"{prefix}.json"), Path(f"{prefix}.bin")
+    metadata = json.loads(metadata_path.read_text())
 
-    declared = meta.get("record_dtype", {}).get("itemsize")
+    declared = metadata.get("record_dtype", {}).get("itemsize")
     if declared is not None and declared != RECORD_SIZE:
         raise SystemExit(
             f"record size mismatch: the file says {declared} bytes, this script "
@@ -60,7 +60,7 @@ def load(prefix: str):
 
     records = []
     for chunk in struct.iter_unpack(RECORD, raw[: len(raw) - len(raw) % RECORD_SIZE]):
-        r = {
+        record = {
             "cycle": chunk[0], "deadline_nanoseconds": chunk[1], "wake_nanoseconds": chunk[2],
             "execution_nanoseconds": chunk[3], "can_transmit_nanoseconds": chunk[4],
             "can_receive_nanoseconds": chunk[5],
@@ -68,10 +68,10 @@ def load(prefix: str):
             "fault_mask": chunk[8], "mode": chunk[9],
         }
         floats = chunk[10:]
-        for i, name in enumerate(ARRAYS):
-            r[name] = list(floats[i * JOINTS:(i + 1) * JOINTS])
-        records.append(r)
-    return meta, records
+        for index, name in enumerate(ARRAYS):
+            record[name] = list(floats[index * JOINTS:(index + 1) * JOINTS])
+        records.append(record)
+    return metadata, records
 
 
 def describe_flags(value: int) -> str:
@@ -83,20 +83,20 @@ def main() -> int:
     if len(sys.argv) != 2:
         print(__doc__)
         return 2
-    meta, records = load(sys.argv[1])
+    metadata, records = load(sys.argv[1])
 
-    b, m, run = meta["build"], meta["machine"], meta["run"]
+    build, machine, run = metadata["build"], metadata["machine"], metadata["run"]
     print(f"{len(records)} records  ({len(records) * RECORD_SIZE / 1e6:.2f} MB)")
-    print(f"  build     {b['git_sha']} ({b['git_state']}), {b['build_type']}")
-    print(f"  kernel    {m['kernel_release']}  [{m['preempt_model']}]"
-          f"{'  REALTIME' if m['realtime_kernel'] else ''}")
-    print(f"  cpu       {m['cpu_model']} x{m['cpu_count']}"
-          + (f", governor={m['cpu_governor']}" if m['cpu_governor'] else ""))
-    if m.get("isolated_cpus"):
-        print(f"  isolated  {m['isolated_cpus']}")
-    if m.get("nvidia_driver"):
-        state = "inference RUNNING" if m.get("gpu_workload_running") else "idle"
-        print(f"  gpu       {m['nvidia_driver']} [{state}]")
+    print(f"  build     {build['git_sha']} ({build['git_state']}), {build['build_type']}")
+    print(f"  kernel    {machine['kernel_release']}  [{machine['preempt_model']}]"
+          f"{'  REALTIME' if machine['realtime_kernel'] else ''}")
+    print(f"  cpu       {machine['cpu_model']} x{machine['cpu_count']}"
+          + (f", governor={machine['cpu_governor']}" if machine['cpu_governor'] else ""))
+    if machine.get("isolated_cpus"):
+        print(f"  isolated  {machine['isolated_cpus']}")
+    if machine.get("nvidia_driver"):
+        state = "inference RUNNING" if machine.get("gpu_workload_running") else "idle"
+        print(f"  gpu       {machine['nvidia_driver']} [{state}]")
     print(f"  run       {run['wall_clock']}  {run['label']!r}  @ {run['control_rate_hertz']} Hz")
 
     if not records:
@@ -105,20 +105,21 @@ def main() -> int:
     # Mode transitions are usually what you actually came to look at.
     print("\n  mode transitions")
     previous = None
-    for r in records:
-        key = (r["mode"], r["flags"])
+    for record in records:
+        key = (record["mode"], record["flags"])
         if key != previous:
-            print(f"    cycle {r['cycle']:8d}  mode={MODES.get(r['mode'], r['mode']):<9}"
-                  f" flags={describe_flags(r['flags'])}")
+            print(f"    cycle {record['cycle']:8d}  mode={MODES.get(record['mode'], record['mode']):<9}"
+                  f" flags={describe_flags(record['flags'])}")
             previous = key
 
     joints = records[0]["joint_count"]
     print(f"\n  tracking error, |cmd - meas| over {joints} joints")
-    for j in range(joints):
-        errs = [abs(r["commanded_position"][j] - r["measured_position"][j]) for r in records]
-        errs.sort()
-        p99 = errs[min(len(errs) - 1, int(0.99 * len(errs)))]
-        print(f"    joint{j}  mean {sum(errs)/len(errs):.5f}  p99 {p99:.5f}  max {errs[-1]:.5f} rad")
+    for joint in range(joints):
+        errors = [abs(record["commanded_position"][joint] - record["measured_position"][joint])
+                  for record in records]
+        errors.sort()
+        p99 = errors[min(len(errors) - 1, int(0.99 * len(errors)))]
+        print(f"    joint{joint}  mean {sum(errors)/len(errors):.5f}  p99 {p99:.5f}  max {errors[-1]:.5f} rad")
     return 0
 
 
