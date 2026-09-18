@@ -8,7 +8,7 @@ namespace {
 
 constexpr std::int64_t nanoseconds_per_second = 1'000'000'000;
 
-timespec to_timespec(Nanos duration) noexcept {
+timespec to_timespec(nanoseconds duration) noexcept {
   timespec spec{};
   spec.tv_sec = static_cast<time_t>(duration.count() / nanoseconds_per_second);
   spec.tv_nsec = static_cast<long>(duration.count() % nanoseconds_per_second);
@@ -17,13 +17,13 @@ timespec to_timespec(Nanos duration) noexcept {
 
 }  // namespace
 
-Nanos monotonic_now() noexcept {
+nanoseconds monotonic_now() noexcept {
   timespec spec{};
   ::clock_gettime(CLOCK_MONOTONIC, &spec);
-  return Nanos{static_cast<std::int64_t>(spec.tv_sec) * nanoseconds_per_second + spec.tv_nsec};
+  return nanoseconds{static_cast<std::int64_t>(spec.tv_sec) * nanoseconds_per_second + spec.tv_nsec};
 }
 
-void sleep_until(Nanos deadline) noexcept {
+void sleep_until(nanoseconds deadline) noexcept {
   const timespec spec = to_timespec(deadline);
   // clock_nanosleep is unusual: it returns the error number directly instead of
   // returning -1 and setting errno. Checking errno here would read stale state.
@@ -32,8 +32,8 @@ void sleep_until(Nanos deadline) noexcept {
   }
 }
 
-void sleep_for(Nanos duration) noexcept {
-  if (duration <= Nanos::zero()) {
+void sleep_for(nanoseconds duration) noexcept {
+  if (duration <= nanoseconds::zero()) {
     return;
   }
   timespec spec = to_timespec(duration);

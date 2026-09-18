@@ -18,7 +18,7 @@
 ///
 /// ## How it works
 ///
-/// `head_` (consumer) and `tail_` (producer) are monotonically increasing
+/// `head` (consumer) and `tail` (producer) are monotonically increasing
 /// counters, *not* wrapped indices. The slot is `counter & mask`. Using
 /// free-running counters is what makes "empty" (`head == tail`) and "full"
 /// (`tail - head == Capacity`) unambiguous; with wrapped indices those two
@@ -27,10 +27,10 @@
 ///
 /// ## The memory ordering, and why each one
 ///
-/// Producer: reads its own `tail_` **relaxed** (nobody else writes it), reads
-/// `head_` **acquire** (to see the consumer's progress), writes the slot, then
-/// publishes with a **release** store to `tail_`. The release is what
-/// guarantees the consumer's acquire-load of `tail_` also sees the slot data.
+/// Producer: reads its own `tail` **relaxed** (nobody else writes it), reads
+/// `head` **acquire** (to see the consumer's progress), writes the slot, then
+/// publishes with a **release** store to `tail`. The release is what
+/// guarantees the consumer's acquire-load of `tail` also sees the slot data.
 /// Get this wrong and it works on x86 and fails on ARM -- rarely, and never
 /// under a debugger.
 ///
@@ -44,8 +44,8 @@
 namespace rc::rt {
 
 /// Cache line size. Head and tail live on separate lines so that the producer
-/// writing `tail_` does not invalidate the line the consumer is reading
-/// `head_` from -- false sharing turns a wait-free queue into a cache-line
+/// writing `tail` does not invalidate the line the consumer is reading
+/// `head` from -- false sharing turns a wait-free queue into a cache-line
 /// ping-pong and can cost an order of magnitude.
 inline constexpr std::size_t cache_line_bytes = 64;
 
@@ -69,25 +69,25 @@ class SpscRing {
   /// policy. The cyclic path must never retry in a loop -- it drops, counts,
   /// and moves on.
   [[nodiscard]] bool push(const T& value) noexcept {
-    const std::uint64_t write_index = tail_.load(std::memory_order_relaxed);
-    const std::uint64_t read_index = head_.load(std::memory_order_acquire);
+    const std::uint64_t write_index = tail.load(std::memory_order_relaxed);
+    const std::uint64_t read_index = head.load(std::memory_order_acquire);
     if (write_index - read_index >= Capacity) {
       return false;  // full
     }
-    slots_[write_index & mask] = value;
-    tail_.store(write_index + 1, std::memory_order_release);
+    slots[write_index & mask] = value;
+    tail.store(write_index + 1, std::memory_order_release);
     return true;
   }
 
   /// Consumer side. Returns false if empty.
   [[nodiscard]] bool pop(T& out) noexcept {
-    const std::uint64_t read_index = head_.load(std::memory_order_relaxed);
-    const std::uint64_t write_index = tail_.load(std::memory_order_acquire);
+    const std::uint64_t read_index = head.load(std::memory_order_relaxed);
+    const std::uint64_t write_index = tail.load(std::memory_order_acquire);
     if (read_index == write_index) {
       return false;  // empty
     }
-    out = slots_[read_index & mask];
-    head_.store(read_index + 1, std::memory_order_release);
+    out = slots[read_index & mask];
+    head.store(read_index + 1, std::memory_order_release);
     return true;
   }
 
@@ -95,8 +95,8 @@ class SpscRing {
   /// a snapshot that may already be stale -- fine for diagnostics, never for
   /// control flow.
   [[nodiscard]] std::size_t size_approx() const noexcept {
-    const std::uint64_t write_index = tail_.load(std::memory_order_acquire);
-    const std::uint64_t read_index = head_.load(std::memory_order_acquire);
+    const std::uint64_t write_index = tail.load(std::memory_order_acquire);
+    const std::uint64_t read_index = head.load(std::memory_order_acquire);
     return static_cast<std::size_t>(write_index - read_index);
   }
 
@@ -106,26 +106,26 @@ class SpscRing {
   /// Total items ever published / consumed. Useful for detecting a stalled
   /// consumer without inferring it from occupancy.
   [[nodiscard]] std::uint64_t produced() const noexcept {
-    return tail_.load(std::memory_order_acquire);
+    return tail.load(std::memory_order_acquire);
   }
   /// @copydoc produced()
   [[nodiscard]] std::uint64_t consumed() const noexcept {
-    return head_.load(std::memory_order_acquire);
+    return head.load(std::memory_order_acquire);
   }
 
   /// Reset to empty. Only safe when neither side is running -- i.e. at
   /// construction time in shared memory, by whoever creates the region.
   void reset() noexcept {
-    head_.store(0, std::memory_order_relaxed);
-    tail_.store(0, std::memory_order_relaxed);
+    head.store(0, std::memory_order_relaxed);
+    tail.store(0, std::memory_order_relaxed);
   }
 
  private:
   static constexpr std::uint64_t mask = Capacity - 1;
 
-  alignas(cache_line_bytes) std::atomic<std::uint64_t> head_{0};
-  alignas(cache_line_bytes) std::atomic<std::uint64_t> tail_{0};
-  alignas(cache_line_bytes) T slots_[Capacity]{};
+  alignas(cache_line_bytes) std::atomic<std::uint64_t> head{0};
+  alignas(cache_line_bytes) std::atomic<std::uint64_t> tail{0};
+  alignas(cache_line_bytes) T slots[Capacity]{};
 };
 
 static_assert(std::atomic<std::uint64_t>::is_always_lock_free,

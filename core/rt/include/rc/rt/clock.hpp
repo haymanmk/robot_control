@@ -21,10 +21,10 @@ namespace rc::rt {
 /// (time since the monotonic epoch). Deliberately one type: mixing a duration
 /// and a time point is exactly the mistake this header exists to prevent, and
 /// a single explicit unit makes the arithmetic auditable.
-using Nanos = std::chrono::nanoseconds;
+using nanoseconds = std::chrono::nanoseconds;
 
 /// Current value of CLOCK_MONOTONIC.
-[[nodiscard]] Nanos monotonic_now() noexcept;
+[[nodiscard]] nanoseconds monotonic_now() noexcept;
 
 /// Block until CLOCK_MONOTONIC reaches @p deadline.
 ///
@@ -32,12 +32,12 @@ using Nanos = std::chrono::nanoseconds;
 /// added on top of it, so repeated use does not accumulate drift. Restarts
 /// itself on EINTR. Returns immediately if the deadline has already passed --
 /// callers that care must check for that (see CyclicTask's missed_deadlines).
-void sleep_until(Nanos deadline) noexcept;
+void sleep_until(nanoseconds deadline) noexcept;
 
 /// Block for @p duration.
 ///
 /// Provided so that labs can measure how much worse this is than sleep_until().
 /// Do not use it to pace a control loop.
-void sleep_for(Nanos duration) noexcept;
+void sleep_for(nanoseconds duration) noexcept;
 
 }  // namespace rc::rt

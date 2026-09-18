@@ -82,7 +82,7 @@ class BridgeClient {
   /// Telemetry records the RT side dropped because the ring was full.
   [[nodiscard]] std::uint64_t telemetry_dropped() const noexcept;
   /// True after a successful attach().
-  [[nodiscard]] bool attached() const noexcept { return region_.valid(); }
+  [[nodiscard]] bool attached() const noexcept { return region.valid(); }
 
   /// Live check against the shared token, so a revocation by the server is
   /// visible here without waiting for the next heartbeat().
@@ -93,12 +93,12 @@ class BridgeClient {
   /// the server revoked it.
   [[nodiscard]] bool verify_control() noexcept;
 
-  SharedRegion region_;
-  std::uint64_t beat_ = 0;         ///< heartbeat counter
-  std::uint64_t command_seq_ = 0;  ///< command sequence: separate, so gaps mean loss
-  std::uint64_t token_ = 0;
-  std::uint64_t last_server_beat_ = 0;
-  bool holds_control_ = false;
+  SharedRegion region;
+  std::uint64_t beat = 0;         ///< heartbeat counter
+  std::uint64_t command_sequence = 0;  ///< command sequence: separate, so gaps mean loss
+  std::uint64_t token = 0;
+  std::uint64_t last_server_beat = 0;
+  bool holds_control = false;
 };
 
 }  // namespace rc::bridge

@@ -54,12 +54,12 @@ class FileSink {
 
   /// Records written to the .bin file so far.
   [[nodiscard]] std::uint64_t records_written() const noexcept {
-    return written_.load(std::memory_order_relaxed);
+    return written.load(std::memory_order_relaxed);
   }
   /// True while the drain thread started by start() is alive.
-  [[nodiscard]] bool running() const noexcept { return running_.load(std::memory_order_acquire); }
+  [[nodiscard]] bool running() const noexcept { return worker_running.load(std::memory_order_acquire); }
   /// Path of the .bin file opened by open().
-  [[nodiscard]] const std::string& bin_path() const noexcept { return bin_path_; }
+  [[nodiscard]] const std::string& bin_path() const noexcept { return output_path; }
 
   /// Synchronous drain, for tests and for a final flush after stop().
   /// The telemetry ring is single-consumer: this refuses (returns 0) while the
@@ -72,13 +72,13 @@ class FileSink {
   /// The actual drain, used by both entry points. No ownership check.
   std::size_t drain_impl(rc::bridge::BridgeServer& server);
 
-  std::FILE* file_ = nullptr;
-  std::string bin_path_;
-  std::vector<TelemetryRecord> buffer_;  ///< allocated once, in open()
-  std::thread thread_;
-  std::atomic<bool> running_{false};
-  std::atomic<bool> stop_requested_{false};
-  std::atomic<std::uint64_t> written_{0};
+  std::FILE* file = nullptr;
+  std::string output_path;
+  std::vector<TelemetryRecord> buffer;  ///< allocated once, in open()
+  std::thread worker;
+  std::atomic<bool> worker_running{false};
+  std::atomic<bool> stop_requested{false};
+  std::atomic<std::uint64_t> written{0};
 };
 
 /// numpy dtype matching TelemetryRecord, so analysis code cannot drift from the

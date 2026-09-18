@@ -43,15 +43,15 @@ namespace rc::rt {
 /// real-time options to apply, and the thresholds for counting and measuring.
 struct CyclicConfig {
   /// Nominal cycle period. 2 ms is 500 Hz, the B601-RS nominal.
-  Nanos period{std::chrono::milliseconds(2)};
+  nanoseconds period{std::chrono::milliseconds(2)};
   /// Scheduler, memory-lock and affinity settings applied at run() start.
   RtOptions rt{};
   /// A cycle whose period error exceeds this counts as an overrun.
   /// Zero means "10% of the period".
-  Nanos overrun_threshold{Nanos::zero()};
+  nanoseconds overrun_threshold{nanoseconds::zero()};
   /// Histogram range. Samples outside it are counted but lose bucket
   /// resolution; LatencyHistogram::out_of_range() reports how many.
-  Nanos histogram_span{std::chrono::milliseconds(2)};
+  nanoseconds histogram_span{std::chrono::milliseconds(2)};
 };
 
 /// What a run produced: cycle counts, the three latency histograms, and the
@@ -66,9 +66,9 @@ struct CyclicReport {
   /// keep up and no amount of scheduler tuning will save it.
   std::uint64_t missed_deadlines = 0;
   /// End-to-end schedule error: where we finished versus where we should have.
-  Nanos drift{Nanos::zero()};
+  nanoseconds drift{nanoseconds::zero()};
   /// Nominal period the run was configured with.
-  Nanos period{Nanos::zero()};
+  nanoseconds period{nanoseconds::zero()};
   /// Which real-time setup steps were actually granted.
   RtStatus rt_status{};
 
@@ -80,7 +80,7 @@ struct CyclicReport {
   LatencyHistogram exec_time;
 
   /// Sizes the three histograms to @p span; @p nominal_period is recorded as-is.
-  CyclicReport(Nanos span, Nanos nominal_period);
+  CyclicReport(nanoseconds span, nanoseconds nominal_period);
   /// Multi-line human-readable summary: counts, drift, and one row per histogram.
   [[nodiscard]] std::string format() const;
 };
@@ -94,24 +94,24 @@ class CyclicTask {
   /// Cycle body. Receives the cycle index and the nominal period -- use the
   /// nominal period for integration, not the measured one, unless you have thought
   /// hard about what a 200 us jitter spike does to your derivative term.
-  using Body = std::function<void(std::uint64_t cycle, Nanos period)>;
+  using cycle_body = std::function<void(std::uint64_t cycle, nanoseconds period)>;
 
   /// Stores the config. Nothing runs and no RT option is applied until run().
-  explicit CyclicTask(CyclicConfig config);
+  explicit CyclicTask(CyclicConfig config_);
 
   /// Applies RT options, then runs exactly @p cycles iterations in the calling
   /// thread. Deliberately synchronous: the RT loop owns its thread, it is not
   /// something spawned and forgotten.
-  CyclicReport run(std::uint64_t cycles, const Body& body);
+  CyclicReport run(std::uint64_t cycles, const cycle_body& body);
 
   /// Runs until @p stop becomes true. Checked once per cycle.
-  CyclicReport run_until(const std::atomic<bool>& stop, const Body& body);
+  CyclicReport run_until(const std::atomic<bool>& stop, const cycle_body& body);
 
  private:
   CyclicReport run_impl(std::uint64_t max_cycles, const std::atomic<bool>* stop,
-                        const Body& body);
+                        const cycle_body& body);
 
-  CyclicConfig cfg_;
+  CyclicConfig config;
 };
 
 }  // namespace rc::rt

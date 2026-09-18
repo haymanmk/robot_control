@@ -15,9 +15,9 @@ constexpr std::size_t drain_batch = 1024;
 
 FileSink::~FileSink() {
   stop();
-  if (file_ != nullptr) {
-    std::fclose(file_);
-    file_ = nullptr;
+  if (file != nullptr) {
+    std::fclose(file);
+    file = nullptr;
   }
 }
 
@@ -35,16 +35,16 @@ std::string numpy_dtype_json() {
 }
 
 bool FileSink::open(const std::string& path_prefix, const Provenance& provenance) {
-  bin_path_ = path_prefix + ".bin";
-  file_ = std::fopen(bin_path_.c_str(), "wb");
-  if (file_ == nullptr) {
+  output_path = path_prefix + ".bin";
+  file = std::fopen(output_path.c_str(), "wb");
+  if (file == nullptr) {
     return false;
   }
 
   std::ofstream meta(path_prefix + ".json");
   if (!meta) {
-    std::fclose(file_);
-    file_ = nullptr;
+    std::fclose(file);
+    file = nullptr;
     return false;
   }
   // Splice the dtype into the provenance object so one file fully describes how
@@ -57,71 +57,71 @@ bool FileSink::open(const std::string& path_prefix, const Provenance& provenance
   meta << json;
 
   // Allocate the drain buffer once, here, so the draining thread never does.
-  buffer_.resize(drain_batch);
-  written_.store(0, std::memory_order_relaxed);
+  buffer.resize(drain_batch);
+  written.store(0, std::memory_order_relaxed);
   return true;
 }
 
 std::size_t FileSink::drain_once(rc::bridge::BridgeServer& server) {
-  if (running_.load(std::memory_order_acquire)) {
+  if (worker_running.load(std::memory_order_acquire)) {
     return 0;  // the worker owns the consumer side; see header
   }
   return drain_impl(server);
 }
 
 std::size_t FileSink::drain_impl(rc::bridge::BridgeServer& server) {
-  if (file_ == nullptr || buffer_.empty()) {
+  if (file == nullptr || buffer.empty()) {
     return 0;
   }
   std::size_t total = 0;
   for (;;) {
-    const std::size_t drained = server.drain(buffer_.data(), buffer_.size());
+    const std::size_t drained = server.drain(buffer.data(), buffer.size());
     if (drained == 0) {
       break;
     }
-    std::fwrite(buffer_.data(), sizeof(TelemetryRecord), drained, file_);
+    std::fwrite(buffer.data(), sizeof(TelemetryRecord), drained, file);
     total += drained;
-    if (drained < buffer_.size()) {
+    if (drained < buffer.size()) {
       break;  // ring is drained
     }
   }
   if (total > 0) {
-    written_.fetch_add(total, std::memory_order_relaxed);
+    written.fetch_add(total, std::memory_order_relaxed);
   }
   return total;
 }
 
 void FileSink::run(rc::bridge::BridgeServer& server, unsigned poll_interval_milliseconds) {
-  while (!stop_requested_.load(std::memory_order_acquire)) {
+  while (!stop_requested.load(std::memory_order_acquire)) {
     drain_impl(server);
     std::this_thread::sleep_for(std::chrono::milliseconds(poll_interval_milliseconds));
   }
   drain_impl(server);  // final sweep: whatever the loop published on its way out
-  if (file_ != nullptr) {
-    std::fflush(file_);
+  if (file != nullptr) {
+    std::fflush(file);
   }
 }
 
 void FileSink::start(rc::bridge::BridgeServer& server, unsigned poll_interval_milliseconds) {
-  if (running_.load(std::memory_order_acquire)) {
+  if (worker_running.load(std::memory_order_acquire)) {
     return;
   }
-  stop_requested_.store(false, std::memory_order_release);
+  stop_requested.store(false, std::memory_order_release);
   // Ownership is handed to the worker *before* it exists, on this thread, so
   // there is no window in which both a caller and the worker believe they may
-  // pop. The worker never touches `thread_` -- it is being move-assigned here
-  // while the worker is already running, and reading it from the worker is a
-  // race ThreadSanitizer caught in an earlier version.
-  running_.store(true, std::memory_order_release);
-  thread_ = std::thread(&FileSink::run, this, std::ref(server), poll_interval_milliseconds);
+  // pop. The worker thread never touches the `worker` handle -- it is being
+  // move-assigned here while the thread is already running, and reading it
+  // from the thread is a race ThreadSanitizer caught in an earlier version.
+  worker_running.store(true, std::memory_order_release);
+  worker = std::thread(&FileSink::run, this, std::ref(server), poll_interval_milliseconds);
 }
 
 void FileSink::stop() {
-  stop_requested_.store(true, std::memory_order_release);
-  if (thread_.joinable()) {
-    thread_.join();
+  stop_requested.store(true, std::memory_order_release);
+  if (worker.joinable()) {
+    worker.join();
   }
-  running_.store(false, std::memory_order_release);
+  worker_running.store(false, std::memory_order_release);
 }
 
 }  // namespace rc::telemetry

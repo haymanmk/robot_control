@@ -118,7 +118,7 @@ int run_server() {
   constexpr std::int64_t ramp_nanoseconds = 300'000'000;  // ADR-0005 default T_stop
 
   rt::CyclicConfig config;
-  config.period = rt::Nanos{period_nanoseconds};
+  config.period = rt::nanoseconds{period_nanoseconds};
   config.rt.priority = 0;  // raise once RLIMIT_RTPRIO is configured; see ADR-0007
   config.rt.lock_memory = true;
   rt::CyclicTask task(config);
@@ -129,8 +129,8 @@ int run_server() {
   // rides on the *next* record. Otherwise it never reaches the file at all.
   bool telemetry_lost_pending = false;
 
-  const rt::CyclicReport report = task.run_until(stop_loop, [&](std::uint64_t cycle, rt::Nanos period) {
-    const rt::Nanos now = rt::monotonic_now();
+  const rt::CyclicReport report = task.run_until(stop_loop, [&](std::uint64_t cycle, rt::nanoseconds period) {
+    const rt::nanoseconds now = rt::monotonic_now();
     std::uint32_t flags = telemetry::flag_none;
     if (telemetry_lost_pending) {
       flags |= telemetry::flag_telemetry_lost;

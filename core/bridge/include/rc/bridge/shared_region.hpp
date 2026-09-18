@@ -65,24 +65,24 @@ class SharedRegion {
   static void unlink(const std::string& name) noexcept;
 
   /// True if a region is mapped.
-  [[nodiscard]] bool valid() const noexcept { return region_ != nullptr; }
+  [[nodiscard]] bool valid() const noexcept { return region != nullptr; }
   /// The mapped region, or nullptr if not valid().
-  [[nodiscard]] BridgeRegion* get() noexcept { return region_; }
+  [[nodiscard]] BridgeRegion* get() noexcept { return region; }
   /// @copydoc get()
-  [[nodiscard]] const BridgeRegion* get() const noexcept { return region_; }
+  [[nodiscard]] const BridgeRegion* get() const noexcept { return region; }
   /// The shm name this was created with or attached to.
-  [[nodiscard]] const std::string& name() const noexcept { return name_; }
+  [[nodiscard]] const std::string& name() const noexcept { return region_name; }
   /// True if this object created the region and will unlink it on close.
-  [[nodiscard]] bool owns() const noexcept { return owner_; }
+  [[nodiscard]] bool owns() const noexcept { return owner; }
 
  private:
   void close() noexcept;
 
-  BridgeRegion* region_ = nullptr;
-  std::size_t mapped_size_ = 0;
-  std::string name_;
-  bool owner_ = false;
-  bool locked_ = false;
+  BridgeRegion* region = nullptr;
+  std::size_t mapped_bytes = 0;
+  std::string region_name;
+  bool owner = false;
+  bool locked = false;
 };
 
 }  // namespace rc::bridge

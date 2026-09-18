@@ -35,43 +35,43 @@ const char* to_string(RegionError error) noexcept {
 SharedRegion::~SharedRegion() { close(); }
 
 SharedRegion::SharedRegion(SharedRegion&& other) noexcept
-    : region_(other.region_),
-      mapped_size_(other.mapped_size_),
-      name_(std::move(other.name_)),
-      owner_(other.owner_),
-      locked_(other.locked_) {
-  other.region_ = nullptr;
-  other.mapped_size_ = 0;
-  other.owner_ = false;
-  other.locked_ = false;
+    : region(other.region),
+      mapped_bytes(other.mapped_bytes),
+      region_name(std::move(other.region_name)),
+      owner(other.owner),
+      locked(other.locked) {
+  other.region = nullptr;
+  other.mapped_bytes = 0;
+  other.owner = false;
+  other.locked = false;
 }
 
 SharedRegion& SharedRegion::operator=(SharedRegion&& other) noexcept {
   if (this != &other) {
     close();
-    region_ = other.region_;
-    mapped_size_ = other.mapped_size_;
-    name_ = std::move(other.name_);
-    owner_ = other.owner_;
-    locked_ = other.locked_;
-    other.region_ = nullptr;
-    other.mapped_size_ = 0;
-    other.owner_ = false;
-    other.locked_ = false;
+    region = other.region;
+    mapped_bytes = other.mapped_bytes;
+    region_name = std::move(other.region_name);
+    owner = other.owner;
+    locked = other.locked;
+    other.region = nullptr;
+    other.mapped_bytes = 0;
+    other.owner = false;
+    other.locked = false;
   }
   return *this;
 }
 
 void SharedRegion::close() noexcept {
-  if (region_ != nullptr) {
-    if (locked_) {
-      ::munlock(region_, mapped_size_);
+  if (region != nullptr) {
+    if (locked) {
+      ::munlock(region, mapped_bytes);
     }
-    ::munmap(region_, mapped_size_);
-    region_ = nullptr;
+    ::munmap(region, mapped_bytes);
+    region = nullptr;
   }
-  mapped_size_ = 0;
-  locked_ = false;
+  mapped_bytes = 0;
+  locked = false;
   // Deliberately NOT unlinking here: a server restart should be able to hand
   // over, and a client destructor must never remove the server's region.
 }
@@ -122,15 +122,15 @@ RegionError SharedRegion::create(const std::string& name, SharedRegion& out,
                        std::memory_order_relaxed);
 
   out.close();
-  out.region_ = mapped;
-  out.mapped_size_ = region_bytes;
-  out.name_ = name;
-  out.owner_ = true;
+  out.region = mapped;
+  out.mapped_bytes = region_bytes;
+  out.region_name = name;
+  out.owner = true;
 
   RegionError result = RegionError::ok;
   if (lock_memory) {
     if (::mlock(address, region_bytes) == 0) {
-      out.locked_ = true;
+      out.locked = true;
     } else {
       // Not fatal: the region is still usable. Reported so the caller can decide
       // whether a pageable bridge is acceptable, rather than silently running an
@@ -203,10 +203,10 @@ RegionError SharedRegion::attach(const std::string& name, SharedRegion& out, boo
   }
 
   out.close();
-  out.region_ = mapped;
-  out.mapped_size_ = region_bytes;
-  out.name_ = name;
-  out.owner_ = false;
+  out.region = mapped;
+  out.mapped_bytes = region_bytes;
+  out.region_name = name;
+  out.owner = false;
   return RegionError::ok;
 }
 

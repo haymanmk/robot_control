@@ -73,22 +73,22 @@ class Seqlock {
   static_assert(std::atomic_ref<std::uint64_t>::is_always_lock_free,
                 "word-wise atomic access must be lock-free or this is not wait-free");
 
-  using Word = std::uint64_t;
-  static constexpr std::size_t word_count = (sizeof(T) + sizeof(Word) - 1) / sizeof(Word);
+  using word = std::uint64_t;
+  static constexpr std::size_t word_count = (sizeof(T) + sizeof(word) - 1) / sizeof(word);
 
  public:
   /// Writer side. Wait-free: bounded steps, no blocking, safe in the cyclic path.
   void store(const T& value) noexcept {
-    Word copy[word_count] = {};
+    word copy[word_count] = {};
     std::memcpy(copy, &value, sizeof(T));
 
-    const std::uint64_t start = seq_.load(std::memory_order_relaxed);
-    seq_.store(start + 1, std::memory_order_relaxed);        // odd: write in progress
+    const std::uint64_t start = sequence.load(std::memory_order_relaxed);
+    sequence.store(start + 1, std::memory_order_relaxed);        // odd: write in progress
     std::atomic_thread_fence(std::memory_order_release);  // odd is visible before payload
     for (std::size_t index = 0; index < word_count; ++index) {
-      std::atomic_ref<Word>(words_[index]).store(copy[index], std::memory_order_relaxed);
+      std::atomic_ref<word>(words[index]).store(copy[index], std::memory_order_relaxed);
     }
-    seq_.store(start + 2, std::memory_order_release);         // even: stable again
+    sequence.store(start + 2, std::memory_order_release);         // even: stable again
   }
 
   /// Reader side. Retries until it gets a torn-free copy.
@@ -96,17 +96,17 @@ class Seqlock {
   ///        cannot win in a few attempts is being starved by a writer running at
   ///        a much higher rate, and should be told rather than spin.
   [[nodiscard]] bool load(T& out, unsigned max_attempts = 16) const noexcept {
-    Word copy[word_count];
+    word copy[word_count];
     for (unsigned attempt = 0; max_attempts == 0 || attempt < max_attempts; ++attempt) {
-      const std::uint64_t before = seq_.load(std::memory_order_acquire);
+      const std::uint64_t before = sequence.load(std::memory_order_acquire);
       if (before & 1u) {
         continue;  // writer mid-update
       }
       for (std::size_t index = 0; index < word_count; ++index) {
-        copy[index] = std::atomic_ref<Word>(words_[index]).load(std::memory_order_relaxed);
+        copy[index] = std::atomic_ref<word>(words[index]).load(std::memory_order_relaxed);
       }
       std::atomic_thread_fence(std::memory_order_acquire);  // payload before the re-check
-      if (seq_.load(std::memory_order_relaxed) == before) {
+      if (sequence.load(std::memory_order_relaxed) == before) {
         std::memcpy(&out, copy, sizeof(T));
         return true;
       }
@@ -117,22 +117,22 @@ class Seqlock {
 
   /// Number of completed writes. Lets a reader tell "nothing new" from "stale".
   [[nodiscard]] std::uint64_t generation() const noexcept {
-    return seq_.load(std::memory_order_acquire) / 2;
+    return sequence.load(std::memory_order_acquire) / 2;
   }
 
   /// Only safe before either side is running.
   void reset() noexcept {
-    seq_.store(0, std::memory_order_relaxed);
+    sequence.store(0, std::memory_order_relaxed);
     for (std::size_t index = 0; index < word_count; ++index) {
-      words_[index] = 0;
+      words[index] = 0;
     }
   }
 
  private:
-  alignas(cache_line_bytes) std::atomic<std::uint64_t> seq_{0};
+  alignas(cache_line_bytes) std::atomic<std::uint64_t> sequence{0};
   // mutable so a const load() can form a non-const atomic_ref; the accesses are
   // reads, the qualifier is an artefact of atomic_ref's interface.
-  alignas(cache_line_bytes) mutable Word words_[word_count]{};
+  alignas(cache_line_bytes) mutable word words[word_count]{};
 };
 
 }  // namespace rc::rt

@@ -85,18 +85,18 @@ class BridgeServer {
   /// Times the client watchdog fired since open().
   [[nodiscard]] std::uint64_t watchdog_trips() const noexcept;
   /// True between a successful open() and close().
-  [[nodiscard]] bool valid() const noexcept { return region_.valid(); }
+  [[nodiscard]] bool valid() const noexcept { return region.valid(); }
 
   /// Mark shutdown and remove the region name.
   void close() noexcept;
 
  private:
-  SharedRegion region_;
-  std::uint64_t watched_token_ = 0;     ///< token value the watchdog is judging
-  std::uint64_t last_heartbeat_ = 0;
-  std::uint64_t last_progress_cycle_ = 0;
-  std::uint32_t timeout_cycles_ = 50;
-  std::uint64_t server_beat_ = 0;
+  SharedRegion region;
+  std::uint64_t watched_token = 0;     ///< token value the watchdog is judging
+  std::uint64_t last_heartbeat = 0;
+  std::uint64_t last_progress_cycle = 0;
+  std::uint32_t timeout_cycles = 50;
+  std::uint64_t server_beat = 0;
 };
 
 }  // namespace rc::bridge

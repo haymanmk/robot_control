@@ -6,7 +6,7 @@
 
 namespace rc::rt {
 
-CyclicReport::CyclicReport(Nanos span, Nanos nominal_period)
+CyclicReport::CyclicReport(nanoseconds span, nanoseconds nominal_period)
     : period(nominal_period),
       // Wake latency is one-sided: you cannot wake before your deadline.
       wake_latency("wake-latency", 0, span.count(), 64),
@@ -47,28 +47,28 @@ std::string CyclicReport::format() const {
   return out.str();
 }
 
-CyclicTask::CyclicTask(CyclicConfig config) : cfg_(config) {
-  if (cfg_.overrun_threshold == Nanos::zero()) {
-    cfg_.overrun_threshold = cfg_.period / 10;
+CyclicTask::CyclicTask(CyclicConfig config_) : config(config_) {
+  if (config.overrun_threshold == nanoseconds::zero()) {
+    config.overrun_threshold = config.period / 10;
   }
 }
 
-CyclicReport CyclicTask::run(std::uint64_t cycles, const Body& body) {
+CyclicReport CyclicTask::run(std::uint64_t cycles, const cycle_body& body) {
   return run_impl(cycles, nullptr, body);
 }
 
-CyclicReport CyclicTask::run_until(const std::atomic<bool>& stop, const Body& body) {
+CyclicReport CyclicTask::run_until(const std::atomic<bool>& stop, const cycle_body& body) {
   return run_impl(std::numeric_limits<std::uint64_t>::max(), &stop, body);
 }
 
 CyclicReport CyclicTask::run_impl(std::uint64_t max_cycles, const std::atomic<bool>* stop,
-                                  const Body& body) {
-  CyclicReport report(cfg_.histogram_span, cfg_.period);
-  report.rt_status = apply_realtime(cfg_.rt);
+                                  const cycle_body& body) {
+  CyclicReport report(config.histogram_span, config.period);
+  report.rt_status = apply_realtime(config.rt);
 
-  const Nanos period = cfg_.period;
-  const Nanos origin = monotonic_now();
-  Nanos previous_wake{Nanos::zero()};
+  const nanoseconds period = config.period;
+  const nanoseconds origin = monotonic_now();
+  nanoseconds previous_wake{nanoseconds::zero()};
 
   for (std::uint64_t cycle = 0; cycle < max_cycles; ++cycle) {
     if (stop != nullptr && stop->load(std::memory_order_relaxed)) {
@@ -77,18 +77,18 @@ CyclicReport CyclicTask::run_impl(std::uint64_t max_cycles, const std::atomic<bo
 
     // The phase lock: the deadline for a cycle depends only on the origin and
     // the cycle index, never on when the previous cycle happened to finish.
-    const Nanos deadline = origin + period * static_cast<std::int64_t>(cycle);
+    const nanoseconds deadline = origin + period * static_cast<std::int64_t>(cycle);
     if (cycle > 0) {
       sleep_until(deadline);
     }
 
-    const Nanos wake = monotonic_now();
+    const nanoseconds wake = monotonic_now();
     report.wake_latency.record((wake - deadline).count());
 
     if (cycle > 0) {
       const std::int64_t error = (wake - previous_wake - period).count();
       report.period_error.record(error);
-      if (error > cfg_.overrun_threshold.count() || error < -cfg_.overrun_threshold.count()) {
+      if (error > config.overrun_threshold.count() || error < -config.overrun_threshold.count()) {
         ++report.overruns;
       }
     }
@@ -96,7 +96,7 @@ CyclicReport CyclicTask::run_impl(std::uint64_t max_cycles, const std::atomic<bo
 
     body(cycle, period);
 
-    const Nanos execution = monotonic_now() - wake;
+    const nanoseconds execution = monotonic_now() - wake;
     report.exec_time.record(execution.count());
     if (execution > period) {
       // We are not skipping cycles to catch up: the next deadline is already in
@@ -110,7 +110,7 @@ CyclicReport CyclicTask::run_impl(std::uint64_t max_cycles, const std::atomic<bo
   }
 
   if (report.cycles > 0) {
-    const Nanos ideal = origin + period * static_cast<std::int64_t>(report.cycles - 1);
+    const nanoseconds ideal = origin + period * static_cast<std::int64_t>(report.cycles - 1);
     report.drift = previous_wake - ideal;
   }
   return report;

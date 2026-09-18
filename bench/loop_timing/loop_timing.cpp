@@ -24,7 +24,7 @@
 using rc::rt::CyclicConfig;
 using rc::rt::CyclicTask;
 using rc::rt::LatencyHistogram;
-using rc::rt::Nanos;
+using rc::rt::nanoseconds;
 using rc::rt::monotonic_now;
 
 namespace {
@@ -32,29 +32,29 @@ namespace {
 /// Stand-in for a real cycle body (Pinocchio RNEA + CAN frame packing).
 /// A busy-spin, not a sleep: work that sleeps hides the very scheduling
 /// behaviour we are trying to measure.
-void busy_for(Nanos duration) {
-  const Nanos end = monotonic_now() + duration;
+void busy_for(nanoseconds duration) {
+  const nanoseconds end = monotonic_now() + duration;
   while (monotonic_now() < end) {
   }
 }
 
 struct Sample {
-  Nanos wake;
+  nanoseconds wake;
 };
 
 /// Strategy A -- the vendor pattern: sleep for (period - elapsed).
 /// Relative sleep, so the kernel's wake-up latency is added to every period and
 /// never repaid. Expect a mean period error of tens of microseconds and drift
 /// that grows without bound.
-std::vector<Sample> run_relative(std::uint64_t cycles, Nanos period, Nanos work) {
+std::vector<Sample> run_relative(std::uint64_t cycles, nanoseconds period, nanoseconds work) {
   std::vector<Sample> out;
   out.reserve(cycles);
   for (std::uint64_t cycle = 0; cycle < cycles; ++cycle) {
-    const Nanos start = monotonic_now();
+    const nanoseconds start = monotonic_now();
     out.push_back({start});
     busy_for(work);
-    const Nanos remaining = period - (monotonic_now() - start);
-    if (remaining > Nanos::zero()) {
+    const nanoseconds remaining = period - (monotonic_now() - start);
+    if (remaining > nanoseconds::zero()) {
       rc::rt::sleep_for(remaining);
     }
   }
@@ -63,14 +63,14 @@ std::vector<Sample> run_relative(std::uint64_t cycles, Nanos period, Nanos work)
 
 /// Strategy B -- absolute deadline, but still computed then slept relatively.
 /// Phase-locked, so drift is corrected; the residual jitter is the scheduler's.
-std::vector<Sample> run_absolute_relative_sleep(std::uint64_t cycles, Nanos period, Nanos work) {
+std::vector<Sample> run_absolute_relative_sleep(std::uint64_t cycles, nanoseconds period, nanoseconds work) {
   std::vector<Sample> out;
   out.reserve(cycles);
-  const Nanos origin = monotonic_now();
+  const nanoseconds origin = monotonic_now();
   for (std::uint64_t cycle = 0; cycle < cycles; ++cycle) {
     out.push_back({monotonic_now()});
     busy_for(work);
-    const Nanos deadline = origin + period * static_cast<std::int64_t>(cycle + 1);
+    const nanoseconds deadline = origin + period * static_cast<std::int64_t>(cycle + 1);
     rc::rt::sleep_for(deadline - monotonic_now());
   }
   return out;
@@ -78,7 +78,7 @@ std::vector<Sample> run_absolute_relative_sleep(std::uint64_t cycles, Nanos peri
 
 /// Strategy C -- clock_nanosleep(TIMER_ABSTIME), via CyclicTask.
 /// The real-time idiom, and the one the rest of this project builds on.
-std::vector<Sample> run_clock_nanosleep(std::uint64_t cycles, Nanos period, Nanos work) {
+std::vector<Sample> run_clock_nanosleep(std::uint64_t cycles, nanoseconds period, nanoseconds work) {
   std::vector<Sample> out;
   out.reserve(cycles);
   CyclicConfig config;
@@ -86,7 +86,7 @@ std::vector<Sample> run_clock_nanosleep(std::uint64_t cycles, Nanos period, Nano
   config.rt.priority = 0;       // measured separately by the caller's --rt
   config.rt.lock_memory = false;
   CyclicTask task(config);
-  task.run(cycles, [&](std::uint64_t, Nanos) {
+  task.run(cycles, [&](std::uint64_t, nanoseconds) {
     out.push_back({monotonic_now()});
     busy_for(work);
   });
@@ -100,7 +100,7 @@ struct Analysis {
   std::uint64_t overruns = 0;
 };
 
-Analysis analyse(const std::string& name, const std::vector<Sample>& samples, Nanos period) {
+Analysis analyse(const std::string& name, const std::vector<Sample>& samples, nanoseconds period) {
   // +/- half a period with 100 buckets gives ~20 us resolution at 500 Hz.
   // Outliers beyond that are counted as out-of-range and reported below; max
   // is tracked exactly either way.
@@ -160,8 +160,8 @@ int main(int argc, char** argv) {
     else usage(argv[0], 2);
   }
 
-  const auto period = Nanos{static_cast<std::int64_t>(1e9 / rate_hertz)};
-  const auto work = Nanos{static_cast<std::int64_t>(work_microseconds * 1000.0)};
+  const auto period = nanoseconds{static_cast<std::int64_t>(1e9 / rate_hertz)};
+  const auto work = nanoseconds{static_cast<std::int64_t>(work_microseconds * 1000.0)};
   const auto cycles = static_cast<std::uint64_t>(seconds * rate_hertz);
 
   std::printf("Lab 01 (C++) -- control loop timing\n");
@@ -182,7 +182,7 @@ int main(int argc, char** argv) {
 
   struct Strategy {
     const char* name;
-    std::vector<Sample> (*run)(std::uint64_t, Nanos, Nanos);
+    std::vector<Sample> (*run)(std::uint64_t, nanoseconds, nanoseconds);
   };
   const Strategy strategies[] = {
       {"relative-sleep", run_relative},

@@ -32,16 +32,16 @@ class LatencyHistogram {
   /// Linear buckets spanning [low_nanoseconds, high_nanoseconds]. Samples
   /// outside that range land in dedicated underflow/overflow counters and still
   /// update min/max exactly.
-  LatencyHistogram(std::string name, std::int64_t low_nanoseconds, std::int64_t high_nanoseconds,
-                   std::size_t bucket_count = 64);
+  LatencyHistogram(std::string name, std::int64_t low_nanoseconds_,
+                   std::int64_t high_nanoseconds_, std::size_t bucket_count = 64);
 
   /// Hot path. No allocation, no locks, no syscalls.
   void record(std::int64_t value_nanoseconds) noexcept;
 
   /// Label given at construction; appears in format_row() and format_chart().
-  [[nodiscard]] const std::string& name() const noexcept { return name_; }
+  [[nodiscard]] const std::string& name() const noexcept { return label; }
   /// Samples recorded, including out-of-range ones.
-  [[nodiscard]] std::uint64_t count() const noexcept { return count_; }
+  [[nodiscard]] std::uint64_t count() const noexcept { return sample_count; }
   /// Exact minimum sample; 0 if nothing was recorded.
   [[nodiscard]] std::int64_t min_ns() const noexcept;
   /// Exact maximum sample; 0 if nothing was recorded.
@@ -57,7 +57,7 @@ class LatencyHistogram {
   /// Number of samples that fell outside [low_nanoseconds, high_nanoseconds].
   /// Non-zero means the histogram range was chosen badly and percentiles are
   /// clipped -- always check this before believing the output.
-  [[nodiscard]] std::uint64_t out_of_range() const noexcept { return underflow_ + overflow_; }
+  [[nodiscard]] std::uint64_t out_of_range() const noexcept { return underflow + overflow; }
 
   /// One aligned line: name, mean, p99, p99.9, max (microseconds).
   [[nodiscard]] std::string format_row() const;
@@ -66,17 +66,17 @@ class LatencyHistogram {
   [[nodiscard]] std::string format_chart(int width = 52) const;
 
  private:
-  std::string name_;
-  std::int64_t lo_ns_;
-  std::int64_t hi_ns_;
-  std::int64_t span_ns_;
-  std::vector<std::uint64_t> buckets_;
-  std::uint64_t underflow_ = 0;
-  std::uint64_t overflow_ = 0;
-  std::uint64_t count_ = 0;
-  std::int64_t min_ = INT64_MAX;
-  std::int64_t max_ = INT64_MIN;
-  double sum_ = 0.0;
+  std::string label;
+  std::int64_t low_nanoseconds;
+  std::int64_t high_nanoseconds;
+  std::int64_t span_nanoseconds;
+  std::vector<std::uint64_t> buckets;
+  std::uint64_t underflow = 0;
+  std::uint64_t overflow = 0;
+  std::uint64_t sample_count = 0;
+  std::int64_t minimum = INT64_MAX;
+  std::int64_t maximum = INT64_MIN;
+  double sum = 0.0;
 };
 
 }  // namespace rc::rt
