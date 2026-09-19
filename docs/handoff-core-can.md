@@ -101,3 +101,32 @@ cmake -B build && cmake --build build -j && ctest --test-dir build --output-on-f
 ```
 
 Then: "Start `core/can` following `docs/handoff-core-can.md`."
+
+## Progress
+
+Done in the session that followed this note:
+
+- `core/can` as suggested: `frame.hpp` (32-byte `CanFrame`, `bits_on_wire()`
+  as a range), `transport.hpp` (`CanTransport`, `CanFilter`), `socketcan.hpp`
+  (`SocketCanTransport`: non-blocking, `SO_TIMESTAMPING` with the software
+  stamp translated to CLOCK_MONOTONIC and the hardware stamp kept raw, error
+  frames enabled), `statistics.hpp` (`BusStatistics`, `bus_utilisation()`,
+  `InterfaceCounters` from sysfs).
+- Tests: `tests/test_can.cpp` runs everywhere; `tests/test_can_loopback.cpp`
+  needs `vcan0` and reports itself as *skipped* (exit 77) without it, so a
+  machine without CAN never looks green for code it did not run.
+- Lab 02 tooling: `bench/can_bus_load/can_bus_load.py` (analyse a `candump`
+  log, or synthesize the bus ADR-0002 assumed; `selftest` is a CTest),
+  `bench_can_capture` (the same capture through our transport, for
+  cross-checking against `candump` on the real adapter), and the write-up
+  skeleton `notebooks/02_can_bus.py`.
+
+Not done, because it needs the adapter: the loopback test on `vcan0` has not
+been executed yet (the session's container had no CAN support), and every
+Lab 02 measurement step. Run `ctest` on the control machine with `vcan0` up
+before trusting the transport, then follow `bench/can_bus_load/README.md`.
+
+One correction to the arithmetic above: RobStride frames carry 29-bit
+identifiers, so a frame is 131–160 bits including the interframe space, and
+14 of them at 500 Hz on 1 Mbit/s is **92%–112%**, not "about 90%". At the
+worst case it does not fit at all.

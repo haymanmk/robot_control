@@ -34,7 +34,7 @@ is finished, and Lab 01 shows it working.
 | **00 — drive behaviour on lost communication** (blocking) | When command frames stop arriving, does a RobStride drive hold its last setpoint or disable itself? | Fail-safe versus fail-operational; why an arm without brakes has no safe unpowered state; ranking stop paths by how little they depend on ([ADR-0005](adr/0005-safe-state-and-stop-architecture.md)) |
 | **01 — loop timing** (done) | How wrong is `time.sleep(dt - elapsed)`, in microseconds? | Monotonic versus wall clocks; absolute versus relative deadlines; phase-locked loops; drift versus jitter; why percentiles beat averages; `SCHED_FIFO`; `mlockall`; why the GIL is not the main problem here |
 | **00b — the firmware floor** (blocking) | On this laptop, is the latency floor set by the kernel or by firmware (SMM)? | `hwlatdetect`; System Management Interrupts; why a dual-kernel cannot fix a firmware stall ([ADR-0007](adr/0007-rt-platform-on-a-cuda-laptop.md)) |
-| 02 — the CAN bus | What is actually on the wire at 500 Hz? | CAN framing, arbitration, bit stuffing, bus load; SocketCAN; `candump` and `cangen`; why bus utilisation, not the kernel, sets the worst-case latency |
+| 02 — the CAN bus (tooling done; measurement needs the adapter) | What is actually on the wire at 500 Hz? | CAN framing, arbitration, bit stuffing, bus load; SocketCAN; `candump` and `cangen`; why bus utilisation, not the kernel, sets the worst-case latency |
 | 03 — round-trip latency | From command frame out to feedback frame back: what is the distribution? | Dead time in a control loop and its effect on the gains you can use; joint-to-joint skew when there is no shared clock |
 
 Starting `core/can` and Lab 02: see [handoff-core-can.md](handoff-core-can.md).

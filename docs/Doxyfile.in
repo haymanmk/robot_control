@@ -10,7 +10,8 @@ OUTPUT_DIRECTORY       = @DOXYGEN_OUTPUT_DIR@
 STRIP_FROM_PATH        = @CMAKE_SOURCE_DIR@
 STRIP_FROM_INC_PATH    = @CMAKE_SOURCE_DIR@/core/realtime/include \
                          @CMAKE_SOURCE_DIR@/core/bridge/include \
-                         @CMAKE_SOURCE_DIR@/core/telemetry/include
+                         @CMAKE_SOURCE_DIR@/core/telemetry/include \
+                         @CMAKE_SOURCE_DIR@/core/can/include
 
 # What is documented: the public headers, plus the README and the design
 # documents as pages. Tests, benches and apps are not API.
@@ -20,7 +21,8 @@ INPUT                  = @CMAKE_SOURCE_DIR@/README.md \
                          @CMAKE_SOURCE_DIR@/docs/adr \
                          @CMAKE_SOURCE_DIR@/core/realtime/include \
                          @CMAKE_SOURCE_DIR@/core/bridge/include \
-                         @CMAKE_SOURCE_DIR@/core/telemetry/include
+                         @CMAKE_SOURCE_DIR@/core/telemetry/include \
+                         @CMAKE_SOURCE_DIR@/core/can/include
 RECURSIVE              = YES
 FILE_PATTERNS          = *.hpp *.md
 USE_MDFILE_AS_MAINPAGE = @CMAKE_SOURCE_DIR@/README.md

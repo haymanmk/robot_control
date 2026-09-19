@@ -51,7 +51,8 @@ target.
 | `core/realtime` — clock, cyclic executive, lock-free rings, real-time setup | done |
 | `core/telemetry` — per-cycle record, provenance, file sink | done |
 | `core/bridge` — shared-memory transport, watchdog | done |
-| `core/can`, `core/drive`, `core/model`, `core/control`, `core/safety` | next |
+| `core/can` — SocketCAN transport with kernel timestamps, bus statistics | built and tested on `vcan0`; hardware checks are Lab 02 |
+| `core/drive`, `core/model`, `core/control`, `core/safety` | next |
 
 See [`core/README.md`](core/README.md) for the layer map and the rules for
 real-time code.

@@ -10,7 +10,7 @@ boundary honest as features are added.
 | [`realtime/`](realtime/) | done | `CLOCK_MONOTONIC` clock; phase-locked `CyclicTask`; `SingleProducerSingleConsumerRing`; `Seqlock`; real-time privileges; allocation-free histograms |
 | [`telemetry/`](telemetry/) | done | fixed-size per-cycle record; provenance collection; file sink |
 | [`bridge/`](bridge/) | done | shared-memory transport; watchdog; server and client endpoints |
-| `can/` | — | SocketCAN with `SO_TIMESTAMPING`; frame encoding; bus statistics |
+| [`can/`](can/) | vcan-tested | `CanFrame`; `CanTransport` interface; `SocketCanTransport` with `SO_TIMESTAMPING`; bus statistics and utilisation |
 | `drive/` | — | RobStride protocol |
 | `model/` | — | kinematics and dynamics (Pinocchio) |
 | `control/` | — | gravity compensation, impedance, trajectory tracking |
