@@ -37,6 +37,8 @@ is finished, and Lab 01 shows it working.
 | 02 — the CAN bus | What is actually on the wire at 500 Hz? | CAN framing, arbitration, bit stuffing, bus load; SocketCAN; `candump` and `cangen`; why bus utilisation, not the kernel, sets the worst-case latency |
 | 03 — round-trip latency | From command frame out to feedback frame back: what is the distribution? | Dead time in a control loop and its effect on the gains you can use; joint-to-joint skew when there is no shared clock |
 
+Starting `core/can` and Lab 02: see [handoff-core-can.md](handoff-core-can.md).
+
 **Deliverable for Phase 0:** the timing budget from ADR-0002's action item 2,
 written from measured numbers.
 
