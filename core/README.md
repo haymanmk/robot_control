@@ -83,7 +83,7 @@ Wrong memory ordering fails rarely, is hard to reproduce, and never shows up
 under a debugger. So:
 
 ```bash
-cmake -B build-tsan -DRC_SANITIZE=thread && cmake --build build-tsan -j
+cmake -B build-tsan -DROBOT_CONTROL_SANITIZE=thread && cmake --build build-tsan -j
 ctest --test-dir build-tsan --output-on-failure
 ```
 

@@ -10,9 +10,9 @@ the linked ADR before changing anything a rule covers.
 ```bash
 cmake -B build && cmake --build build -j          # warnings are on: -Wall -Wextra -Wpedantic -Wshadow -Wconversion
 ctest --test-dir build --output-on-failure        # both suites must pass
-cmake -B build-tsan -DRC_SANITIZE=thread && cmake --build build-tsan -j
+cmake -B build-tsan -DROBOT_CONTROL_SANITIZE=thread && cmake --build build-tsan -j
 ctest --test-dir build-tsan --output-on-failure   # required if you touched core/realtime or core/bridge
-cmake -B build -DRC_DOCS_WARN_AS_ERROR=ON && cmake --build build --target docs   # if Doxygen is installed
+cmake -B build -DROBOT_CONTROL_DOCS_WARN_AS_ERROR=ON && cmake --build build --target docs   # if Doxygen is installed
 ```
 
 A change is not done until the build is warning-free and the tests pass. Fix

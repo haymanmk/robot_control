@@ -2,7 +2,7 @@
 # measure: if it is absent this file does nothing except say so.
 #
 #   cmake --build build --target docs        -> build/docs/html/index.html
-#   cmake -B build -DRC_DOCS_WARN_AS_ERROR=ON  -> an undocumented public
+#   cmake -B build -DROBOT_CONTROL_DOCS_WARN_AS_ERROR=ON  -> an undocumented public
 #                                                 symbol fails the target (CI)
 find_package(Doxygen QUIET OPTIONAL_COMPONENTS dot)
 find_package(Python3 QUIET COMPONENTS Interpreter)

@@ -17,7 +17,7 @@ add_compile_options(-Wall -Wextra -Wpedantic -Wshadow -Wconversion)
 
 # Opt-in sanitizers. ThreadSanitizer is the one that matters here: the bridge is
 # lock-free, and wrong memory ordering fails rarely, unreproducibly, and never
-# under a debugger.  cmake -B build-tsan -DRC_SANITIZE=thread
+# under a debugger.  cmake -B build-tsan -DROBOT_CONTROL_SANITIZE=thread
 set(ROBOT_CONTROL_SANITIZE "" CACHE STRING "Sanitizer to enable: thread, address, undefined")
 if(ROBOT_CONTROL_SANITIZE)
   add_compile_options(-fsanitize=${ROBOT_CONTROL_SANITIZE} -fno-omit-frame-pointer -g)

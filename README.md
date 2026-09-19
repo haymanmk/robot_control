@@ -41,7 +41,7 @@ cmake --build build --target docs   # -> build/docs/html/index.html
 
 The headers carry the reasoning, not just the signatures, so the rendered
 pages are the fastest way to read a module before opening it. Configure with
-`-DRC_DOCS_WARN_AS_ERROR=ON` to make an undocumented public symbol fail the
+`-DROBOT_CONTROL_DOCS_WARN_AS_ERROR=ON` to make an undocumented public symbol fail the
 target.
 
 ## Status
