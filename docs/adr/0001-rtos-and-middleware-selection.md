@@ -3,6 +3,7 @@
 **Status:** Proposed
 **Date:** 2026-09-10
 **Amended:** 2026-09-10 — added GPU coexistence constraint (NVIDIA driver/CUDA policy inference sharing the RT laptop)
+**Amended:** 2026-09-23 — corrected the "silent mode switch" claim; added the out-of-band-driver requirement (see Amendment 2)
 **Deciders:** TBD
 
 ## Context
@@ -55,7 +56,7 @@ Proposed (pending measurement):
 - **GPU coexistence:** the NVIDIA driver lives entirely in the Linux domain and cannot mask RT interrupts or block Cobalt threads — structural immunity to driver-induced kernel latencies, by construction rather than tuning discipline. The kernel is not built with `CONFIG_PREEMPT_RT`, so the driver also installs normally, no bypass flag.
 
 **Cons:**
-- RT threads must avoid ordinary Linux syscalls or they silently migrate to the Linux domain; mode-switch bugs are hard to find.
+- RT threads must avoid ordinary Linux syscalls or they migrate to the Linux domain. *Corrected by Amendment 2 below: the migration is silent only by default; both Cobalt and EVL can report every switch, with its cause, on request.*
 - Drivers in the RT path must be RTDM; RT Ethernet (RTnet) is essentially unmaintained — verify EtherCAT master support before committing.
 - Gives up most of `ros2_control`; the RT↔ROS2 bridge and controller lifecycle are built and maintained in-house.
 - Weaker debugging/observability tooling; small community.
@@ -93,6 +94,49 @@ Low-level motor control on a dedicated MCU or the drives themselves (e.g., CiA 4
 *Not mutually exclusive with A/B — worth considering if drives already close their own loops.*
 
 *GPU coexistence strengthens this option considerably: if the drives/MCU close the servo loops, the laptop only needs soft real-time at policy rate (tens to a few hundred Hz), and the NVIDIA/RT-kernel conflict largely evaporates. Given that the RT platform is a laptop — a weak determinism platform regardless of kernel — this deserves serious weight before either kernel-side answer.*
+
+## Amendment 2 (2026-09-23): stage switches are detectable, and every driver on the cyclic path must be out-of-band
+
+The con above originally said that a real-time thread which issues an ordinary
+Linux syscall "silently" migrates to the Linux domain and that such bugs are
+"hard to find". That overstates it. The migration is silent **by default**,
+not by nature:
+
+- **EVL (Xenomai 4):** a thread that sets the mode bit `EVL_T_WOSS` ("warn on
+  stage switch") is told every time it is demoted from the out-of-band stage,
+  with a diagnostic code naming the cause: `EVL_HMDIAG_SYSDEMOTE` for an
+  in-band syscall, `EVL_HMDIAG_SIGDEMOTE` for a signal, `EVL_HMDIAG_EXDEMOTE`
+  for an exception such as a page fault. Delivery is per thread: `EVL_T_HMSIG`
+  sends `SIGDEBUG` with the code in `si_code`; `EVL_T_HMOBS` (ABI 23 and
+  later) routes it to the thread's observable, so a monitor can consume it
+  without signals. `evl ps` also exposes a running count of in-band switches.
+- **Xenomai 3 (Cobalt):** the same idea under `pthread_setmode_np(0,
+  PTHREAD_WARNSW)`, delivered as `SIGDEBUG`, with a mode-switch count per
+  thread in `/proc/xenomai/sched/stat`.
+
+So the accurate statement is: *an unobserved stage switch is the bug, and
+the observation tool exists; the discipline is to enable it on every
+real-time thread and to treat every report as a defect.* That is a smaller
+cost than the original wording implied, and it should not by itself count
+against Option A.
+
+What does count, and was understated, is the sentence next to it about
+RTDM drivers. A dual kernel helps only if **everything** on the cyclic path
+runs out-of-band: the timer, the fieldbus driver, and the shared memory. Our
+fieldbus is CAN, driven through SocketCAN. SocketCAN is an in-band driver, so
+under EVL a `send()` on it from an out-of-band thread is exactly the
+in-band syscall that `EVL_HMDIAG_SYSDEMOTE` reports — and it would report it
+**every cycle**. With plain SocketCAN, Option A buys nothing. Xenomai 3 had
+RTDM CAN drivers for some controllers; whether EVL has an out-of-band driver
+for our adapter is unverified. **Option A is therefore conditional on an
+out-of-band CAN driver for the adapter in use**, and that condition is
+checked before any other Xenomai work (ADR-0007, decision 4).
+
+The idea is also worth keeping on PREEMPT_RT, where there is no stage to
+switch but the same rule ("no syscalls in the cyclic path except the
+fieldbus") exists and was until now enforced only by review. ADR-0008 adopts
+the same mechanism — a per-thread syscall filter that reports the offender —
+so the rule is enforced by the build on either kernel.
 
 ## Trade-off Analysis
 

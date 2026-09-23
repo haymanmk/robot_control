@@ -2,6 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-09-15
+**Amended:** 2026-09-23 — decision 4 gains a third condition: an out-of-band CAN driver must exist (see Amendment 1)
 **Deciders:** haymanmk
 **Amends:** [ADR-0002](0002-target-platform-rebot-b601-rs.md), "Xenomai is off the table"
 
@@ -38,7 +39,8 @@ noisier.
    It is the measurement that decides whether changing the kernel could help at all.
 4. **Xenomai stays a documented fallback.** Reopen it only if the isolation
    work fails its budget *and* `hwlatdetect` shows the latency source is
-   something a dual-kernel could actually fix.
+   something a dual-kernel could actually fix *and* an out-of-band driver
+   exists for our CAN adapter (Amendment 1).
 5. **Nothing in the real-time path touches the GPU.** Inference belongs to the
    non-real-time tier ([ADR-0001](0001-rtos-and-middleware-selection.md) tier 3),
    and [ADR-0006](0006-process-topology-and-rt-client-transport.md)'s process
@@ -91,6 +93,38 @@ busy is not a baseline; it is a best case, and it must be labelled as one.
 Provenance stamping ([ADR-0004](0004-system-decomposition.md) §3) therefore
 also records: the NVIDIA driver version, whether an inference workload was
 running, GPU IRQ affinity, and the `hwlatdetect` result for that machine.
+
+## Amendment 1 (2026-09-23): what a Xenomai fallback actually requires
+
+Decision 4 named two conditions for reopening Xenomai. A discussion of EVL's
+health monitoring (`EVL_T_WOSS`, `EVL_HMDIAG_SYSDEMOTE`; see ADR-0001,
+Amendment 2) showed a third, and it comes first in practice:
+
+3. **An out-of-band CAN driver must exist for the adapter in use.** Our
+   cyclic path talks to the arm through SocketCAN, an in-band driver. Under
+   EVL, a `send()` on that socket from an out-of-band thread is an in-band
+   syscall; the thread is demoted to the in-band stage every cycle, and the
+   dual kernel gains nothing. Before any Xenomai work — before building a
+   kernel, before installing the driver — check whether EVL, or Xenomai 3's
+   RTDM CAN layer, has an out-of-band driver for this adapter. If not, the
+   fallback is closed regardless of what `hwlatdetect` says, and the
+   remaining options are those already listed under Consequences: a lower
+   control rate, a dedicated small machine, or a microcontroller for the
+   servo loop.
+
+Two smaller points from the same discussion:
+
+- If Xenomai is ever adopted, **every real-time thread runs with the
+  stage-switch warning enabled** (`EVL_T_WOSS`, delivered through the
+  thread's observable so that no signal lands in the cyclic path), and the
+  first `EVL_HMDIAG_SYSDEMOTE` in any test is a failing test. The concern in
+  ADR-0001 was never that switches are undetectable; it was that they are
+  silent unless asked about. Ask.
+- The same enforcement is available on PREEMPT_RT without a dual kernel, and
+  ADR-0008 adopts it: a per-thread syscall filter on the cyclic thread that
+  reports any syscall outside the fieldbus and the clock, plus a page-fault
+  count around each run. Those two are the PREEMPT_RT equivalents of
+  `SYSDEMOTE` and `EXDEMOTE`.
 
 ## Consequences
 
