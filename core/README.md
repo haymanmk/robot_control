@@ -30,6 +30,13 @@ follows all of them:
 - **No exceptions across the cycle boundary.**
 - **Every cyclic function is `noexcept`** and documents its worst-case cost.
 
+The first three are enforced by the kernel, not only by review: with
+`CyclicConfig::guard` set, the loop's thread gets a seccomp allowlist (the
+clock, the sleep, the fieldbus socket calls, and nothing else) and its page
+faults are counted. A stray `printf` is refused, returns `ENOSYS`, and the
+report says `first was write`. See [ADR-0008](../docs/adr/0008-enforce-cyclic-path-rules-mechanically.md)
+and `core/realtime/include/robot_control/realtime/cyclic_guard.hpp`.
+
 ## The bridge in one picture
 
 ```

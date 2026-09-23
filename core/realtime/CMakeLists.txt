@@ -3,6 +3,7 @@ add_library(robot_control_realtime
   src/latency_histogram.cpp
   src/realtime_setup.cpp
   src/cyclic_task.cpp
+  src/cyclic_guard.cpp
 )
 add_library(robot_control::realtime ALIAS robot_control_realtime)
 

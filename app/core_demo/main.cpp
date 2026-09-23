@@ -18,6 +18,7 @@
 #include <signal.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -117,10 +118,29 @@ int run_server() {
   std::int64_t stop_started_ns = 0;
   constexpr std::int64_t ramp_nanoseconds = 300'000'000;  // ADR-0005 default T_stop
 
+  // Events the loop wants to tell the operator about. Printing from the cycle
+  // body is a rule violation (no I/O on the cyclic path) -- and the first thing
+  // the cyclic guard caught when it was switched on here. So the body appends
+  // to this fixed-size log, and main prints it once the loop has ended.
+  struct Event {
+    std::uint64_t cycle;
+    const char* text;
+  };
+  constexpr std::size_t max_events = 64;
+  Event events[max_events]{};
+  std::atomic<std::size_t> event_count{0};
+  const auto note_event = [&](std::uint64_t cycle, const char* text) noexcept {
+    const std::size_t index = event_count.fetch_add(1, std::memory_order_relaxed);
+    if (index < max_events) {
+      events[index] = Event{cycle, text};
+    }
+  };
+
   realtime::CyclicConfig config;
   config.period = realtime::nanoseconds{period_nanoseconds};
   config.realtime.priority = 0;  // raise once RLIMIT_RTPRIO is configured; see ADR-0007
   config.realtime.lock_memory = true;
+  config.guard = true;  // ADR-0008: refuse and name any stray syscall; count page faults
   realtime::CyclicTask task(config);
 
   std::atomic<bool> stop_loop{false};
@@ -129,7 +149,7 @@ int run_server() {
   // rides on the *next* record. Otherwise it never reaches the file at all.
   bool telemetry_lost_pending = false;
 
-  const realtime::CyclicReport report = task.run_until(stop_loop, [&](std::uint64_t cycle, realtime::nanoseconds period) {
+  const realtime::CyclicReport report = task.run_until_in_thread(stop_loop, [&](std::uint64_t cycle, realtime::nanoseconds period) {
     const realtime::nanoseconds now = realtime::monotonic_now();
     std::uint32_t flags = telemetry::flag_none;
     if (telemetry_lost_pending) {
@@ -139,9 +159,7 @@ int run_server() {
 
     // ── 1. watchdog, before anything else trusts a client ──
     if (server.tick(cycle)) {
-      std::printf("[cycle %llu] WATCHDOG: client lost -- Category 2 stop\n",
-                  static_cast<unsigned long long>(cycle));
-      std::fflush(stdout);
+      note_event(cycle, "WATCHDOG: client lost -- Category 2 stop");
       // flag_client_lost is what lets the flight recorder distinguish "the
       // client died" from "the client asked us to stop": both reach stopping.
       flags |= telemetry::flag_client_lost;
@@ -161,9 +179,7 @@ int run_server() {
         // operator-initiated act (ADR-0005 §4) -- and only once the ramp has
         // finished, never mid-deceleration.
         if (type == CommandType::clear_fault && mode == ControlMode::holding) {
-          std::printf("[cycle %llu] fault cleared by operator; idle\n",
-                      static_cast<unsigned long long>(cycle));
-          std::fflush(stdout);
+          note_event(cycle, "fault cleared by operator; idle");
           mode = ControlMode::idle;
           server.set_state(ServerState::idle);
         }
@@ -205,9 +221,7 @@ int run_server() {
         // while flagged stopping is a lie to whoever reads the telemetry later.
         flags = (flags & ~telemetry::flag_stopping) | telemetry::flag_holding;
         server.set_state(ServerState::holding);
-        std::printf("[cycle %llu] holding compliantly at the stop pose\n",
-                    static_cast<unsigned long long>(cycle));
-        std::fflush(stdout);
+        note_event(cycle, "holding compliantly at the stop pose");
       }
     } else if (mode == ControlMode::holding) {
       flags |= telemetry::flag_holding;
@@ -255,6 +269,15 @@ int run_server() {
   sink.stop();
   server.close();
 
+  const std::size_t recorded = std::min(event_count.load(std::memory_order_acquire), max_events);
+  for (std::size_t index = 0; index < recorded; ++index) {
+    std::printf("[cycle %llu] %s\n", static_cast<unsigned long long>(events[index].cycle),
+                events[index].text);
+  }
+  if (event_count.load(std::memory_order_acquire) > max_events) {
+    std::printf("(%zu further events not recorded)\n",
+                event_count.load(std::memory_order_acquire) - max_events);
+  }
   std::printf("\n%s", report.format().c_str());
   std::printf("  commands  %llu received\n  telemetry %llu records written, %llu dropped\n"
               "  watchdog  %llu trips\n",

@@ -34,6 +34,7 @@
 #include <string>
 
 #include "robot_control/realtime/clock.hpp"
+#include "robot_control/realtime/cyclic_guard.hpp"
 #include "robot_control/realtime/latency_histogram.hpp"
 #include "robot_control/realtime/realtime_setup.hpp"
 
@@ -52,6 +53,14 @@ struct CyclicConfig {
   /// Histogram range. Samples outside it are counted but lose bucket
   /// resolution; LatencyHistogram::out_of_range() reports how many.
   nanoseconds histogram_span{std::chrono::milliseconds(2)};
+  /// Arm the cyclic guard (syscall filter and fault counters) on the loop's
+  /// thread after the real-time options are applied. Because a seccomp filter
+  /// stays on the thread for life, a guarded loop should run through
+  /// run_in_thread() or run_until_in_thread(), not on a thread that has work
+  /// to do afterwards.
+  bool guard = false;
+  /// What the guard permits, when enabled.
+  GuardOptions guard_options{};
 };
 
 /// What a run produced: cycle counts, the three latency histograms, and the
@@ -71,6 +80,8 @@ struct CyclicReport {
   nanoseconds period{nanoseconds::zero()};
   /// Which real-time setup steps were actually granted.
   RealtimeStatus realtime_status{};
+  /// What the cyclic guard observed, if CyclicConfig::guard was set.
+  GuardReport guard{};
 
   /// wake - deadline: the scheduler's fault.
   LatencyHistogram wake_latency;
@@ -106,6 +117,15 @@ class CyclicTask {
 
   /// Runs until @p stop becomes true. Checked once per cycle.
   CyclicReport run_until(const std::atomic<bool>& stop, const cycle_body& body);
+
+  /// Same as run(), on a fresh thread that exits as soon as the loop ends; the
+  /// caller blocks until then. This is the form to use with the guard, whose
+  /// syscall filter cannot be removed from a thread once installed. The thread
+  /// gets the process default stack (see prepare_process()).
+  CyclicReport run_in_thread(std::uint64_t cycles, const cycle_body& body);
+
+  /// Same as run_until(), on a fresh thread. See run_in_thread().
+  CyclicReport run_until_in_thread(const std::atomic<bool>& stop, const cycle_body& body);
 
  private:
   CyclicReport run_loop(std::uint64_t max_cycles, const std::atomic<bool>* stop,

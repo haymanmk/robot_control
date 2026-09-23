@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <limits>
 #include <sstream>
+#include <thread>
 
 namespace robot_control::realtime {
 
@@ -19,7 +20,7 @@ std::string CyclicReport::format() const {
   std::ostringstream out;
   char line[256];
 
-  out << realtime_status.format();
+  out << realtime_status.format() << guard.format();
   std::snprintf(line, sizeof(line), "%-18s%10s%10s%10s%10s\n", "metric", "mean", "p99", "p99.9",
                 "max");
   out << line << std::string(58, '-') << '\n';
@@ -61,10 +62,35 @@ CyclicReport CyclicTask::run_until(const std::atomic<bool>& stop, const cycle_bo
   return run_loop(std::numeric_limits<std::uint64_t>::max(), &stop, body);
 }
 
+CyclicReport CyclicTask::run_in_thread(std::uint64_t cycles, const cycle_body& body) {
+  // The report is built on the caller's side and filled by the worker, so the
+  // worker's last act is returning from run_loop -- nothing that would need a
+  // syscall the guard refuses. std::thread's own exit path is on the allowlist.
+  CyclicReport report(config.histogram_span, config.period);
+  std::thread worker([&] { report = run_loop(cycles, nullptr, body); });
+  worker.join();
+  return report;
+}
+
+CyclicReport CyclicTask::run_until_in_thread(const std::atomic<bool>& stop,
+                                             const cycle_body& body) {
+  CyclicReport report(config.histogram_span, config.period);
+  std::thread worker(
+      [&] { report = run_loop(std::numeric_limits<std::uint64_t>::max(), &stop, body); });
+  worker.join();
+  return report;
+}
+
 CyclicReport CyclicTask::run_loop(std::uint64_t max_cycles, const std::atomic<bool>* stop,
                                   const cycle_body& body) {
   CyclicReport report(config.histogram_span, config.period);
   report.realtime_status = apply_realtime(config.realtime);
+  if (config.guard) {
+    // After apply_realtime(), which needs syscalls the guard refuses, and
+    // before the first cycle. From here to the end of the loop, the only
+    // syscalls this thread may make are the clock, the sleep and the fieldbus.
+    report.guard = arm_cyclic_guard(config.guard_options);
+  }
 
   const nanoseconds period = config.period;
   const nanoseconds origin = monotonic_now();
@@ -109,6 +135,9 @@ CyclicReport CyclicTask::run_loop(std::uint64_t max_cycles, const std::atomic<bo
     ++report.cycles;
   }
 
+  if (config.guard) {
+    read_cyclic_guard(report.guard);
+  }
   if (report.cycles > 0) {
     const nanoseconds ideal = origin + period * static_cast<std::int64_t>(report.cycles - 1);
     report.drift = previous_wake - ideal;

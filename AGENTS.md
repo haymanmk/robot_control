@@ -35,6 +35,14 @@ Anything callable from inside the 500 Hz loop follows all of these
 - **Time is `CLOCK_MONOTONIC` in `int64` nanoseconds**, never `CLOCK_REALTIME`
   and never `double`.
 
+- **Run cyclic loops guarded** (`CyclicConfig::guard = true`, via
+  `run_in_thread()`): a seccomp allowlist refuses any syscall outside the
+  clock, the sleep and the fieldbus, and page faults are counted
+  ([ADR-0008](docs/adr/0008-enforce-cyclic-path-rules-mechanically.md)). A
+  guard report with violations or faults is a failing test. Never widen the
+  allowlist to make a test pass; fix the loop, or add the syscall with a
+  written reason.
+
 If you are unsure whether a function is on the cyclic path, assume it is.
 
 ## Things that look like bugs and are not
